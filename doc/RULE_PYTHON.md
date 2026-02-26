@@ -1,0 +1,134 @@
+# Python LLM 모듈 개발 규칙
+
+> 참조: [PRD.md](./PRD.md), [TASK_PYTHON.md](./TASK_PYTHON.md)
+
+---
+
+## 1. 아키텍처 규칙
+
+| 규칙 | 설명 |
+| ---- | ---- |
+| **FastAPI 사용** | REST API는 FastAPI로 구현. 비동기 처리에 최적화됨 |
+| **Uvicorn/Gunicorn** | 워커 설정으로 병렬 처리 확보 (`--workers 2` 이상) |
+| **RAG 미사용** | 외부 지식 검색 없이 순수 LLM 추론만 수행 |
+| **Spring Boot 연동** | CORS 설정 필수. JSON 요청/응답 형식 준수 |
+
+---
+
+## 2. API 규칙
+
+### 2.1 엔드포인트
+
+| 경로 | 메서드 | 필수 |
+| ---- | ------ | ---- |
+| `/` | GET | 서버 상태 |
+| `/health` | GET | 헬스체크 |
+| `/infer` | POST | LLM 추론 |
+
+### 2.2 요청/응답 스키마
+
+**POST /infer 요청** (JSON):
+
+```json
+{
+  "query": "string (필수, 1~4096자)",
+  "max_length": 100,
+  "temperature": 0.7,
+  "top_p": 1.0,
+  "num_return_sequences": 1
+}
+```
+
+**응답** (JSON):
+
+```json
+{
+  "generated_text": "string"
+}
+```
+
+---
+
+## 3. 전처리 규칙
+
+LLM에 전달하기 전 입력 텍스트 전처리 필수:
+
+| 항목 | 규칙 |
+| ---- | ---- |
+| **길이 제한** | `LLM_INPUT_MAX_LENGTH` (기본 2048자) 초과 시 잘라내기 |
+| **공백 정규화** | 연속 공백을 하나로 통합 |
+| **PII 마스킹** | (선택) 이메일, 전화번호 등 개인정보 마스킹 |
+
+---
+
+## 4. 에러 핸들링 규칙
+
+| 예외 | HTTP | 처리 |
+| ---- | ---- | ---- |
+| TimeoutError | 503 | `{"detail": "LLM 추론 타임아웃 (N초)"}` |
+| MemoryError (OOM) | 503 | `{"detail": "LLM 추론 중 메모리 부족"}` |
+| RuntimeError | 503 | 에러 메시지 전달 |
+| OSError (모델 로딩 실패) | 503 | `{"detail": "LLM 모델 로딩 실패"}` |
+| 기타 Exception | 500 | `{"detail": "서버 내부 오류가 발생했습니다"}` |
+
+**Fallback**: `LLM_FALLBACK_RESPONSE` 설정 시 예외 발생해도 해당 문자열 반환 (200).
+
+---
+
+## 5. 설정 규칙
+
+| 규칙 | 설명 |
+| ---- | ---- |
+| **Pydantic Settings** | `config.py`에서 환경변수 관리 |
+| **환경변수** | `.env` 또는 `.env.example` 참고 |
+| **민감 정보** | API 키 등은 환경변수로만 주입, 코드에 하드코딩 금지 |
+
+---
+
+## 6. 로깅 규칙
+
+| 규칙 | 설명 |
+| ---- | ---- |
+| **요청 로깅** | `/infer` 호출 시 query(50자 제한) 로깅 |
+| **응답 로깅** | 생성 텍스트 길이 로깅 |
+| **예외 로깅** | `logger.exception` 또는 `logger.error` 사용 |
+| **레벨** | 기본 INFO, 상세 디버깅 시 DEBUG |
+
+---
+
+## 7. 테스트 규칙
+
+| 규칙 | 설명 |
+| ---- | ---- |
+| **pytest** | `tests/` 디렉터리에 테스트 작성 |
+| **Mock 모드** | `LLM_FALLBACK_MOCK=1`로 torch 없이 테스트 |
+| **conftest.py** | 공통 fixture (client, mock env) 정의 |
+| **실행** | `pytest tests/ -v` |
+
+---
+
+## 8. 배포 규칙
+
+| 규칙 | 설명 |
+| ---- | ---- |
+| **Docker** | Dockerfile 제공 시 `python:3.11-slim` 기반 |
+| **포트** | 기본 8000, `PORT` 환경변수로 변경 가능 |
+| **워커** | Uvicorn `--workers 2` 이상 권장 |
+
+---
+
+## 9. 모델 서빙 규칙
+
+| 상황 | 권장 |
+| ---- | ---- |
+| 프로토타입/소규모 | transformers pipeline |
+| 프로덕션/대규모 | vLLM 또는 TGI (Text Generation Inference) |
+
+---
+
+## 10. 금지 사항
+
+- RAG, 벡터 DB 사용
+- `query` 없이 `/infer` 호출 허용
+- 4096자 초과 입력 허용
+- 예외 무시 (try-except 후 빈 응답 반환)
