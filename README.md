@@ -10,6 +10,7 @@ Spring Boot + Python + MySQL 기반의 LLM 추론 샘플 시스템입니다.
 | 백엔드 | Spring Boot 4.0.3, Java 21 |
 | 데이터베이스 | MySQL 8.0 |
 | LLM 서버 | Python 3.10+, FastAPI, Uvicorn |
+| LLM 백엔드 | Hugging Face Transformers 또는 Ollama (로컬 LLM) |
 | 비동기 호출 | Spring WebFlux (WebClient) |
 | ORM | Spring Data JPA / Hibernate |
 
@@ -47,6 +48,14 @@ spring_llm_sample_mng/
 │   └── com/sample/llm/controller/
 │       └── LlmControllerTest.java    # 컨트롤러 단위 테스트
 ├── python-llm/                        # Python LLM 서버
+│   ├── app.py                         # FastAPI 앱 (Ollama/HuggingFace 분기)
+│   ├── ollama_service.py              # Ollama API 클라이언트
+│   ├── llm_service.py                 # Hugging Face 추론 서비스
+│   ├── config.py                      # 설정 관리 (Pydantic Settings)
+│   └── tests/                         # pytest 테스트
+├── doc/                               # 프로젝트 문서
+│   ├── SETUP_OLLAMA.md                # Ollama 설치/연동 가이드
+│   └── TASK_LAMA.md                   # Ollama 동작 테스트 기록
 ├── docker-compose.yml                 # MySQL 컨테이너 설정
 ├── .env.example                       # 환경변수 템플릿
 └── build.gradle
@@ -64,7 +73,20 @@ docker-compose up -d
 
 MySQL이 포트 `3307`에서 실행됩니다. (기본 계정: `llm_admin` / `llm_password`)
 
-### 2. Python LLM 서버 실행 (포트 8000)
+### 2. (선택) Ollama 서버 실행
+
+로컬 LLM을 사용하려면 Ollama를 설치하고 모델을 다운로드합니다.
+자세한 설정은 [Ollama 설치 가이드](doc/SETUP_OLLAMA.md)를 참고하세요.
+
+```bash
+# Ollama 설치 후 모델 다운로드 (한국어 권장: qwen2.5:7b)
+ollama pull qwen2.5:7b
+
+# Ollama 서버 실행 (기본 포트 11434)
+ollama serve
+```
+
+### 3. Python LLM 서버 실행 (포트 8000)
 
 ```bash
 cd python-llm
@@ -77,12 +99,23 @@ python -m venv .venv
 # source .venv/bin/activate
 
 pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-> Mock 모드(GPU 없이 테스트): 환경변수 `LLM_FALLBACK_MOCK=1` 설정 후 실행
+LLM 백엔드를 선택하여 실행합니다:
 
-### 3. Spring Boot 애플리케이션 실행
+```bash
+# Ollama 모드 (로컬 LLM, 권장)
+LLM_BACKEND=ollama OLLAMA_MODEL=qwen2.5:7b \
+  uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+# Hugging Face 모드 (GPU 필요)
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+# Mock 모드 (GPU 없이 테스트)
+LLM_FALLBACK_MOCK=1 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 4. Spring Boot 애플리케이션 실행
 
 ```bash
 # 환경변수 설정 (.env.example 참고)
@@ -98,12 +131,24 @@ Spring Boot가 포트 `8080`에서 실행됩니다.
 
 `.env.example` 파일을 `.env`로 복사하여 설정합니다.
 
+**Spring Boot** (`.env`):
+
 | 변수 | 기본값 | 설명 |
 | ---- | ------ | ---- |
 | `MYSQL_USERNAME` | `root` | MySQL 사용자명 |
 | `MYSQL_PASSWORD` | `rootpassword` | MySQL 비밀번호 |
 | `LLM_SERVICE_URL` | `http://localhost:8000` | Python LLM 서버 URL |
 | `SERVER_PORT` | `8080` | Spring Boot 서버 포트 |
+
+**Python LLM 서버** (`python-llm/.env`):
+
+| 변수 | 기본값 | 설명 |
+| ---- | ------ | ---- |
+| `LLM_BACKEND` | `huggingface` | LLM 백엔드 (`huggingface` / `ollama`) |
+| `LLM_MODEL` | `gpt2` | Hugging Face 모델명 |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama 서버 URL |
+| `OLLAMA_MODEL` | `gemma3:4b` | Ollama 모델명 (한국어: `qwen2.5:7b`) |
+| `LLM_FALLBACK_MOCK` | `false` | Mock 모드 (torch 없이 테스트) |
 
 ## API 사용법
 
@@ -207,15 +252,41 @@ curl "http://localhost:8080/api/llm/history/1?page=0&size=10"
 
 ## 테스트
 
+### Spring Boot
+
 ```bash
 ./gradlew test
 ```
 
 `@WebMvcTest`와 `@MockBean`을 사용하여 실제 Python LLM 서버 없이 컨트롤러 단위 테스트를 실행합니다.
 
+### Python LLM 서버
+
+```bash
+cd python-llm
+.venv/Scripts/python -m pytest tests/ -v
+```
+
+`sys.modules` mock으로 torch/transformers import 없이 테스트합니다.
+
+## 아키텍처
+
+```text
+[클라이언트]
+    ↓ HTTP
+[Spring Boot :8080]
+    ↓ WebClient
+[Python FastAPI :8000]
+    ↓ LLM_BACKEND 분기
+    ├── ollama → [Ollama :11434] → 로컬 LLM (qwen2.5:7b 등)
+    └── huggingface → [Transformers] → GPU/CPU 모델 (gpt2 등)
+```
+
 ## 참고 문서
 
 - [PRD (제품 요구사항)](doc/PRD.md)
 - [Spring Boot 개발 규칙](doc/RULE_SPRING.md)
 - [Spring Boot 작업 목록](doc/TASK_SPRING.md)
+- [Ollama 설치/연동 가이드](doc/SETUP_OLLAMA.md)
+- [Ollama 동작 테스트 기록](doc/TASK_LAMA.md)
 - [Python LLM 모듈 README](python-llm/README.md)

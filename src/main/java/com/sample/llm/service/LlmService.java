@@ -41,7 +41,7 @@ public class LlmService {
 
 		return llmWebClient.post()
 				.uri("/infer")
-				.bodyValue(Map.of("query", query))
+				.bodyValue(Map.of("query", query, "max_length", 512))
 				.retrieve()
 				.bodyToMono(LlmResponse.class)
 				.map(LlmResponse::getGeneratedText)
