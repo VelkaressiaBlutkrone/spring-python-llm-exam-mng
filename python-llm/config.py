@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     )
 
     # LLM
+    llm_backend: str = Field(default="huggingface", description="LLM 백엔드 (huggingface | ollama)")
     llm_model: str = Field(default="gpt2", description="Hugging Face 모델명")
     llm_fallback_mock: bool = Field(default=False, description="torch 미지원 시 mock 사용")
 

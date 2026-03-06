@@ -1,0 +1,150 @@
+"""
+Ollama LLM 서비스
+로컬 Ollama 서버를 통한 LLM 추론
+"""
+
+import logging
+
+import httpx
+
+from config import get_settings
+
+logger = logging.getLogger(__name__)
+
+
+async def generate_with_ollama(
+    query: str,
+    model: str | None = None,
+    max_length: int = 100,
+    temperature: float = 0.7,
+    top_p: float = 1.0,
+) -> str:
+    """
+    Ollama /api/generate API를 통한 텍스트 생성
+
+    Args:
+        query: 입력 텍스트
+        model: Ollama 모델명 (None이면 설정값 사용)
+        max_length: 최대 생성 토큰 수
+        temperature: 생성 다양성
+        top_p: nucleus sampling
+
+    Returns:
+        생성된 텍스트
+    """
+    settings = get_settings()
+    model = model or settings.ollama_model
+
+    payload = {
+        "model": model,
+        "prompt": query,
+        "stream": False,
+        "options": {
+            "num_predict": max_length,
+            "temperature": temperature,
+            "top_p": top_p,
+        },
+    }
+
+    timeout = httpx.Timeout(
+        connect=5.0,
+        read=float(settings.llm_infer_timeout_sec),
+        write=5.0,
+        pool=5.0,
+    )
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            response = await client.post(
+                f"{settings.ollama_base_url}/api/generate",
+                json=payload,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result.get("response", "")
+        except httpx.ConnectError:
+            logger.error("Ollama 서버 연결 실패: %s", settings.ollama_base_url)
+            raise ConnectionError(
+                "Ollama 서버에 연결할 수 없습니다. ollama serve 실행 여부를 확인하세요."
+            )
+        except httpx.ReadTimeout:
+            logger.warning("Ollama 추론 타임아웃")
+            raise TimeoutError("Ollama 추론 타임아웃")
+
+
+async def chat_with_ollama(
+    messages: list[dict],
+    model: str | None = None,
+    temperature: float = 0.7,
+    max_length: int = 256,
+) -> str:
+    """
+    Ollama /api/chat API를 통한 대화형 생성
+
+    Args:
+        messages: [{"role": "user", "content": "..."}] 형식의 메시지 리스트
+        model: Ollama 모델명
+        temperature: 생성 다양성
+        max_length: 최대 생성 토큰 수
+
+    Returns:
+        생성된 응답 텍스트
+    """
+    settings = get_settings()
+    model = model or settings.ollama_model
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": temperature,
+            "num_predict": max_length,
+        },
+    }
+
+    timeout = httpx.Timeout(
+        connect=5.0,
+        read=float(settings.llm_infer_timeout_sec),
+        write=5.0,
+        pool=5.0,
+    )
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            response = await client.post(
+                f"{settings.ollama_base_url}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result.get("message", {}).get("content", "")
+        except httpx.ConnectError:
+            logger.error("Ollama 서버 연결 실패: %s", settings.ollama_base_url)
+            raise ConnectionError(
+                "Ollama 서버에 연결할 수 없습니다. ollama serve 실행 여부를 확인하세요."
+            )
+        except httpx.ReadTimeout:
+            logger.warning("Ollama Chat 추론 타임아웃")
+            raise TimeoutError("Ollama Chat 추론 타임아웃")
+
+
+async def check_ollama_health() -> bool:
+    """Ollama 서버 상태 확인"""
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(f"{settings.ollama_base_url}/api/tags")
+            return response.status_code == 200
+    except Exception:
+        return False
+
+
+async def list_models() -> list[str]:
+    """설치된 Ollama 모델 목록 조회"""
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.get(f"{settings.ollama_base_url}/api/tags")
+        response.raise_for_status()
+        data = response.json()
+        return [m["name"] for m in data.get("models", [])]

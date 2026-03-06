@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import get_settings
-from llm_service import generate
 from schemas import InferRequest, InferResponse
 
 # 로깅 설정
@@ -43,9 +42,17 @@ def root():
 
 
 @app.get("/health")
-def health():
+async def health():
     """헬스체크 엔드포인트"""
-    return {"status": "healthy"}
+    settings = get_settings()
+    result = {"status": "healthy", "llm_backend": settings.llm_backend}
+
+    if settings.llm_backend == "ollama":
+        from ollama_service import check_ollama_health
+
+        result["ollama_connected"] = await check_ollama_health()
+
+    return result
 
 
 @app.exception_handler(TimeoutError)
@@ -84,24 +91,39 @@ def general_exception_handler(request: Request, exc: Exception):
 
 
 @app.post("/infer", response_model=InferResponse)
-def infer(request: InferRequest) -> InferResponse:
+async def infer(request: InferRequest) -> InferResponse:
     """
     LLM 추론: 쿼리 입력 → 생성 응답 반환
     Spring Boot /api/llm/query 에서 호출
+    LLM_BACKEND=ollama 시 Ollama 서버, 아니면 Hugging Face 사용
     """
     query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
     logger.info("Infer request: query=%s", repr(query_preview))
 
+    settings = get_settings()
+
     try:
-        generated_text = generate(
-            query=request.query,
-            max_length=request.max_length,
-            temperature=request.temperature,
-            top_p=request.top_p or 1.0,
-            num_return_sequences=request.num_return_sequences,
-        )
+        if settings.llm_backend == "ollama":
+            from ollama_service import generate_with_ollama
+
+            generated_text = await generate_with_ollama(
+                query=request.query,
+                max_length=request.max_length,
+                temperature=request.temperature,
+                top_p=request.top_p or 1.0,
+            )
+        else:
+            from llm_service import generate
+
+            generated_text = generate(
+                query=request.query,
+                max_length=request.max_length,
+                temperature=request.temperature,
+                top_p=request.top_p or 1.0,
+                num_return_sequences=request.num_return_sequences,
+            )
     except Exception as exc:
-        fallback = get_settings().llm_fallback_response
+        fallback = settings.llm_fallback_response
         if fallback:
             logger.warning("LLM failed: %s, using fallback response", exc)
             generated_text = fallback
