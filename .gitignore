@@ -35,3 +35,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Claude Code / OMC ###
+.claude/
+.omc/
+nul
