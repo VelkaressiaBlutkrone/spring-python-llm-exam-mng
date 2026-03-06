@@ -576,7 +576,559 @@ ollama run hospital-assistant
 
 ---
 
-## 10. 작업 체크리스트
+## 10. RDB(MySQL) 데이터를 활용한 LLM 학습 방법
+
+Ollama 로컬 LLM에 RDB 데이터를 활용하는 방법은 크게 3가지입니다.
+모델 자체를 재학습(Fine-tuning)하는 방법과, 모델 변경 없이 데이터를 프롬프트로 주입하는 방법이 있습니다.
+
+### 10.1 학습 방법 비교
+
+| 방법 | 난이도 | GPU 필요 | 모델 변경 | 적합한 상황 |
+| ---- | ------ | -------- | --------- | ----------- |
+| **프롬프트 주입 (In-Context Learning)** | 낮음 | 불필요 | 없음 | DB 데이터를 참조하여 응답 생성, 빠른 적용 |
+| **시스템 프롬프트 + Modelfile** | 낮음 | 불필요 | 프롬프트만 | 도메인 지식을 시스템 프롬프트로 고정 |
+| **Fine-tuning (GGUF 변환)** | 높음 | 필수 | 모델 가중치 | 대량 데이터로 모델 자체를 특화 |
+
+---
+
+### 10.2 방법 1: 프롬프트 주입 (In-Context Learning)
+
+MySQL에서 관련 데이터를 조회하여 LLM 프롬프트에 컨텍스트로 포함시키는 방식입니다.
+모델 수정 없이 즉시 적용 가능하며, 가장 실용적인 방법입니다.
+
+#### 아키텍처
+
+```text
+[사용자 질문]
+    ↓
+[Python FastAPI]
+    ↓ (1) MySQL에서 관련 데이터 조회
+[MySQL] → 조회 결과
+    ↓ (2) 프롬프트 = 시스템 지시 + DB 데이터 + 사용자 질문
+[Ollama] → LLM 응답
+    ↓
+[사용자에게 반환]
+```
+
+#### Python 구현 예시
+
+```python
+"""
+RDB 데이터를 활용한 프롬프트 주입 서비스
+python-llm/rdb_context_service.py
+"""
+
+import logging
+import aiomysql
+import httpx
+
+logger = logging.getLogger(__name__)
+
+# MySQL 연결 설정
+DB_CONFIG = {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "password",
+    "db": "llm_db",
+}
+
+OLLAMA_BASE_URL = "http://localhost:11434"
+
+
+async def get_db_pool():
+    """MySQL 커넥션 풀 생성"""
+    return await aiomysql.create_pool(**DB_CONFIG, minsize=1, maxsize=5)
+
+
+async def fetch_context_from_db(query: str, pool) -> str:
+    """
+    사용자 질문과 관련된 데이터를 MySQL에서 조회하여
+    LLM 컨텍스트로 변환
+
+    예: chat_history에서 유사한 과거 대화 검색
+    """
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            # 과거 대화 이력에서 키워드 매칭
+            await cur.execute(
+                """
+                SELECT query, response
+                FROM chat_history
+                WHERE status = 'COMPLETED'
+                  AND query LIKE %s
+                ORDER BY timestamp DESC
+                LIMIT 5
+                """,
+                (f"%{query[:20]}%",),
+            )
+            rows = await cur.fetchall()
+
+    if not rows:
+        return ""
+
+    context_lines = ["[참고: 과거 대화 이력]"]
+    for row in rows:
+        context_lines.append(f"Q: {row['query']}")
+        context_lines.append(f"A: {row['response']}")
+        context_lines.append("")
+
+    return "\n".join(context_lines)
+
+
+async def generate_with_rdb_context(
+    query: str,
+    pool,
+    model: str = "gemma3:4b",
+    temperature: float = 0.7,
+) -> str:
+    """
+    MySQL 데이터를 컨텍스트로 포함하여 Ollama 추론 수행
+
+    1. MySQL에서 관련 데이터 조회
+    2. 시스템 프롬프트 + DB 컨텍스트 + 사용자 질문 조합
+    3. Ollama API 호출
+    """
+    # (1) DB에서 컨텍스트 조회
+    db_context = await fetch_context_from_db(query, pool)
+
+    # (2) 프롬프트 조합
+    system_prompt = (
+        "당신은 병원 예약 시스템의 AI 어시스턴트입니다.\n"
+        "아래 참고 데이터를 활용하여 정확하게 응답하세요.\n"
+        "참고 데이터에 없는 내용은 일반 지식으로 답변하세요."
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+    ]
+
+    if db_context:
+        messages.append({"role": "system", "content": db_context})
+
+    messages.append({"role": "user", "content": query})
+
+    # (3) Ollama Chat API 호출
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": {"temperature": temperature},
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            f"{OLLAMA_BASE_URL}/api/chat",
+            json=payload,
+        )
+        response.raise_for_status()
+        result = response.json()
+        return result.get("message", {}).get("content", "")
+```
+
+#### FastAPI 엔드포인트 추가
+
+```python
+# app.py에 추가
+from rdb_context_service import get_db_pool, generate_with_rdb_context
+
+db_pool = None
+
+@app.on_event("startup")
+async def startup():
+    global db_pool
+    db_pool = await get_db_pool()
+
+@app.on_event("shutdown")
+async def shutdown():
+    if db_pool:
+        db_pool.close()
+        await db_pool.wait_closed()
+
+@app.post("/infer/with-context", response_model=InferResponse)
+async def infer_with_context(request: InferRequest) -> InferResponse:
+    """RDB 데이터를 컨텍스트로 활용한 LLM 추론"""
+    generated_text = await generate_with_rdb_context(
+        query=request.query,
+        pool=db_pool,
+        model=get_settings().ollama_model,
+        temperature=request.temperature,
+    )
+    return InferResponse(generated_text=generated_text)
+```
+
+#### 의존성 추가
+
+```bash
+pip install aiomysql
+```
+
+---
+
+### 10.3 방법 2: 시스템 프롬프트 + Modelfile (도메인 특화)
+
+MySQL에서 도메인 데이터를 추출하여 Modelfile의 시스템 프롬프트에 포함시키는 방식입니다.
+모델 자체는 변경하지 않지만, 항상 특정 도메인 지식을 갖고 응답합니다.
+
+#### Step 1: MySQL에서 학습 데이터 추출
+
+```sql
+-- 진료과 정보 추출
+SELECT department_name, description, symptoms
+FROM departments
+ORDER BY department_name;
+
+-- 의사 정보 추출
+SELECT d.name, d.specialty, dept.department_name
+FROM doctors d
+JOIN departments dept ON d.department_id = dept.id;
+
+-- 자주 묻는 질문 추출
+SELECT query, response
+FROM chat_history
+WHERE status = 'COMPLETED'
+ORDER BY timestamp DESC
+LIMIT 100;
+```
+
+#### Step 2: 추출 스크립트 작성
+
+```python
+"""
+MySQL 데이터를 Modelfile용 시스템 프롬프트로 변환
+python-llm/export_modelfile_data.py
+"""
+
+import pymysql
+
+
+def export_domain_data() -> str:
+    """MySQL에서 도메인 데이터를 추출하여 시스템 프롬프트 생성"""
+    conn = pymysql.connect(
+        host="localhost",
+        user="root",
+        password="password",
+        db="llm_db",
+        charset="utf8mb4",
+    )
+
+    prompt_parts = [
+        "당신은 병원 예약 시스템의 AI 어시스턴트입니다.",
+        "아래는 시스템에 등록된 정보입니다. 이 정보를 기반으로 정확하게 답변하세요.",
+        "",
+    ]
+
+    with conn.cursor(pymysql.cursors.DictCursor) as cur:
+        # 진료과 정보
+        cur.execute("SELECT department_name, description FROM departments")
+        departments = cur.fetchall()
+        if departments:
+            prompt_parts.append("[진료과 목록]")
+            for dept in departments:
+                prompt_parts.append(
+                    f"- {dept['department_name']}: {dept['description']}"
+                )
+            prompt_parts.append("")
+
+        # FAQ 데이터
+        cur.execute(
+            """
+            SELECT query, response FROM chat_history
+            WHERE status = 'COMPLETED'
+            ORDER BY timestamp DESC LIMIT 50
+            """
+        )
+        faqs = cur.fetchall()
+        if faqs:
+            prompt_parts.append("[자주 묻는 질문]")
+            for faq in faqs:
+                prompt_parts.append(f"Q: {faq['query']}")
+                prompt_parts.append(f"A: {faq['response']}")
+                prompt_parts.append("")
+
+    conn.close()
+    return "\n".join(prompt_parts)
+
+
+def generate_modelfile(output_path: str = "Modelfile"):
+    """Modelfile 생성"""
+    domain_data = export_domain_data()
+
+    modelfile_content = f'''FROM gemma3:4b
+
+SYSTEM """{domain_data}"""
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_predict 512
+'''
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(modelfile_content)
+
+    print(f"Modelfile 생성 완료: {output_path}")
+
+
+if __name__ == "__main__":
+    generate_modelfile()
+```
+
+#### Step 3: 커스텀 모델 빌드 및 실행
+
+```bash
+# 데이터 추출 및 Modelfile 생성
+python export_modelfile_data.py
+
+# Ollama 커스텀 모델 빌드
+ollama create hospital-assistant -f Modelfile
+
+# 테스트
+ollama run hospital-assistant "내과 진료 예약하려면 어떻게 하나요?"
+```
+
+#### 데이터 갱신 자동화
+
+DB 데이터가 변경될 때마다 모델을 재빌드하는 스크립트:
+
+```bash
+#!/bin/bash
+# rebuild_model.sh - 주기적으로 실행 (cron 등록 권장)
+
+cd /path/to/python-llm
+
+# 1. MySQL에서 최신 데이터 추출 → Modelfile 생성
+python export_modelfile_data.py
+
+# 2. 기존 모델 삭제 후 재빌드
+ollama rm hospital-assistant 2>/dev/null
+ollama create hospital-assistant -f Modelfile
+
+echo "모델 재빌드 완료: $(date)"
+```
+
+---
+
+### 10.4 방법 3: Fine-tuning (모델 재학습)
+
+RDB 데이터로 모델 가중치를 직접 학습시키는 방법입니다.
+가장 높은 품질을 달성할 수 있지만, GPU와 학습 환경이 필요합니다.
+
+#### 전체 흐름
+
+```text
+[MySQL] → (1) 학습 데이터 추출 (JSONL)
+    ↓
+[Python] → (2) Unsloth/LoRA로 Fine-tuning
+    ↓
+[GGUF 파일] → (3) Ollama에 등록
+    ↓
+[Ollama 서버] → (4) Fine-tuned 모델로 추론
+```
+
+#### Step 1: MySQL에서 학습 데이터 추출 (JSONL 형식)
+
+```python
+"""
+MySQL 데이터를 Fine-tuning용 JSONL로 변환
+python-llm/export_training_data.py
+"""
+
+import json
+import pymysql
+
+
+def export_to_jsonl(output_path: str = "training_data.jsonl"):
+    """
+    chat_history 테이블에서 학습 데이터 추출
+    형식: ChatML (Ollama/Unsloth 호환)
+    """
+    conn = pymysql.connect(
+        host="localhost",
+        user="root",
+        password="password",
+        db="llm_db",
+        charset="utf8mb4",
+    )
+
+    with conn.cursor(pymysql.cursors.DictCursor) as cur:
+        cur.execute(
+            """
+            SELECT query, response
+            FROM chat_history
+            WHERE status = 'COMPLETED'
+              AND response IS NOT NULL
+              AND LENGTH(response) > 10
+            ORDER BY timestamp
+            """
+        )
+        rows = cur.fetchall()
+
+    conn.close()
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        for row in rows:
+            # ChatML 형식
+            entry = {
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "당신은 병원 예약 시스템의 AI 어시스턴트입니다.",
+                    },
+                    {"role": "user", "content": row["query"]},
+                    {"role": "assistant", "content": row["response"]},
+                ]
+            }
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    print(f"학습 데이터 {len(rows)}건 추출 완료: {output_path}")
+
+
+if __name__ == "__main__":
+    export_to_jsonl()
+```
+
+생성되는 `training_data.jsonl` 예시:
+
+```jsonl
+{"messages":[{"role":"system","content":"당신은 병원 예약 시스템의 AI 어시스턴트입니다."},{"role":"user","content":"두통이 심한데 어느 과로 가야 하나요?"},{"role":"assistant","content":"두통 증상은 신경과 또는 내과 진료를 추천드립니다."}]}
+{"messages":[{"role":"system","content":"당신은 병원 예약 시스템의 AI 어시스턴트입니다."},{"role":"user","content":"예약 취소 방법"},{"role":"assistant","content":"마이페이지 > 예약 관리에서 취소할 수 있습니다."}]}
+```
+
+#### Step 2: Unsloth + LoRA로 Fine-tuning
+
+```bash
+# Fine-tuning 환경 설치 (GPU 필요, CUDA 11.8+)
+pip install unsloth[colab-new]
+pip install trl datasets
+```
+
+```python
+"""
+Unsloth LoRA Fine-tuning 스크립트
+python-llm/finetune_ollama.py
+
+요구사항: NVIDIA GPU (VRAM 8GB+), CUDA 11.8+
+"""
+
+from unsloth import FastLanguageModel
+from trl import SFTTrainer
+from transformers import TrainingArguments
+from datasets import load_dataset
+
+# (1) 베이스 모델 로딩 (4bit 양자화)
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/gemma-2-2b-it-bnb-4bit",  # 또는 llama-3.1-8b
+    max_seq_length=2048,
+    load_in_4bit=True,
+)
+
+# (2) LoRA 어댑터 설정
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=16,               # LoRA rank
+    lora_alpha=16,
+    lora_dropout=0,
+    target_modules=[
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+    ],
+)
+
+# (3) 학습 데이터 로딩
+dataset = load_dataset("json", data_files="training_data.jsonl", split="train")
+
+# (4) 학습 실행
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=dataset,
+    args=TrainingArguments(
+        output_dir="./finetuned_model",
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        num_train_epochs=3,
+        learning_rate=2e-4,
+        fp16=True,
+        logging_steps=10,
+        save_steps=100,
+    ),
+)
+
+trainer.train()
+
+# (5) GGUF로 변환 (Ollama 호환 형식)
+model.save_pretrained_gguf(
+    "hospital-model-gguf",
+    tokenizer,
+    quantization_method="q4_k_m",  # 4bit 양자화
+)
+
+print("Fine-tuning 및 GGUF 변환 완료!")
+```
+
+#### Step 3: Fine-tuned 모델을 Ollama에 등록
+
+```dockerfile
+# Modelfile.finetuned
+FROM ./hospital-model-gguf/unsloth.Q4_K_M.gguf
+
+SYSTEM """당신은 병원 예약 시스템의 AI 어시스턴트입니다.
+환자의 증상을 분석하고 적절한 진료과를 추천합니다."""
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_predict 512
+```
+
+```bash
+# Ollama에 등록
+ollama create hospital-finetuned -f Modelfile.finetuned
+
+# 테스트
+ollama run hospital-finetuned "허리가 아프고 다리가 저린데 어디로 가야 하나요?"
+```
+
+---
+
+### 10.5 방법별 권장 시나리오
+
+| 시나리오 | 권장 방법 | 이유 |
+| -------- | --------- | ---- |
+| **빠른 프로토타입** | 방법 1 (프롬프트 주입) | 모델 변경 없이 즉시 적용 |
+| **고정된 도메인 지식** | 방법 2 (Modelfile) | 매번 DB 조회 불필요, 응답 속도 빠름 |
+| **대량 데이터 + 고품질** | 방법 3 (Fine-tuning) | 모델이 도메인 지식을 내재화 |
+| **데이터가 자주 변경** | 방법 1 + 방법 2 조합 | 실시간 데이터는 프롬프트, 고정 데이터는 Modelfile |
+
+### 10.6 학습 데이터 품질 관리
+
+| 항목 | 설명 |
+| ---- | ---- |
+| **데이터 정제** | `status='COMPLETED'`인 정상 응답만 사용, 빈 응답·에러 응답 제외 |
+| **최소 데이터량** | Fine-tuning: 최소 100건 이상, 권장 1,000건 이상 |
+| **데이터 다양성** | 다양한 질문 유형 포함 (증상 문의, 예약, FAQ 등) |
+| **라벨 검증** | 추출된 Q&A 쌍의 정확성을 사람이 검수 |
+| **개인정보 제거** | 환자명, 연락처 등 PII 마스킹 후 학습 데이터로 사용 |
+
+### 10.7 전체 파이프라인 요약
+
+```text
+[MySQL (RDB)]
+    │
+    ├─→ 방법 1: 실시간 조회 → 프롬프트 주입 → Ollama /api/chat
+    │                        (aiomysql + httpx)
+    │
+    ├─→ 방법 2: 데이터 추출 → Modelfile 시스템 프롬프트 → ollama create
+    │                        (export_modelfile_data.py)
+    │
+    └─→ 방법 3: JSONL 추출 → Unsloth LoRA 학습 → GGUF 변환 → ollama create
+                             (export_training_data.py → finetune_ollama.py)
+```
+
+---
+
+## 11. 작업 체크리스트
+
+### Ollama 서버 구축
 
 - [ ] Ollama 설치 및 `ollama --version` 확인
 - [ ] 추천 모델 다운로드 (`ollama pull gemma3:4b`)
@@ -589,10 +1141,23 @@ ollama run hospital-assistant
 - [ ] (선택) Modelfile로 프로젝트 전용 커스텀 모델 생성
 - [ ] (선택) Spring AI + Ollama 직접 연동 검토
 
+### RDB 데이터 학습
+
+- [ ] 방법 1: `rdb_context_service.py` 구현 (프롬프트 주입)
+- [ ] 방법 1: `/infer/with-context` 엔드포인트 추가 및 테스트
+- [ ] 방법 1: `aiomysql` 의존성 추가
+- [ ] 방법 2: `export_modelfile_data.py` 작성 (Modelfile 생성기)
+- [ ] 방법 2: 커스텀 모델 빌드 (`ollama create hospital-assistant`)
+- [ ] (선택) 방법 3: `export_training_data.py` 작성 (JSONL 추출)
+- [ ] (선택) 방법 3: Unsloth + LoRA Fine-tuning 실행
+- [ ] (선택) 방법 3: GGUF 변환 후 Ollama 등록
+- [ ] 학습 데이터 품질 검증 (PII 제거, 정확성 검수)
+
 ---
 
-## 11. 문서 이력
+## 12. 문서 이력
 
 | 버전 | 날짜 | 작성자 | 변경 내용 |
 | ---- | ---- | ------ | ---------- |
 | 1.0 | 2025-03-06 | - | 최초 작성: Ollama 설치, 추천 모델, Python/Spring Boot 연동 가이드 |
+| 1.1 | 2025-03-06 | - | RDB(MySQL) 데이터 활용 학습 방법 추가 (프롬프트 주입, Modelfile, Fine-tuning) |
