@@ -15,6 +15,9 @@ pydantic>=2.5.0
 pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
 
+# DB (의학데이터 적재)
+pymysql>=1.1.0
+
 # 테스트
 pytest>=7.4.0
 httpx>=0.26.0
