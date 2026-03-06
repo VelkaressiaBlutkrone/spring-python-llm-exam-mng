@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     llm_input_max_length: int = Field(default=2048, ge=1, le=32768, description="입력 최대 문자 수")
     llm_fallback_response: str = Field(default="", description="LLM 실패 시 반환할 기본 응답")
 
+    # Ollama
+    ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama 서버 URL")
+    ollama_model: str = Field(default="gemma3:4b", description="Ollama 모델명")
+
+    # MySQL (의학데이터 조회)
+    mysql_host: str = Field(default="localhost", description="MySQL 호스트")
+    mysql_port: int = Field(default=3307, ge=1, le=65535, description="MySQL 포트")
+    mysql_user: str = Field(default="root", description="MySQL 사용자")
+    mysql_password: str = Field(default="rootpassword", description="MySQL 비밀번호")
+    mysql_db: str = Field(default="llm_db", description="MySQL 데이터베이스명")
+
     # API 서버
     host: str = Field(default="0.0.0.0", description="서버 바인드 주소")
     port: int = Field(default=8000, ge=1, le=65535, description="서버 포트")
