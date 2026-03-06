@@ -40,8 +40,8 @@ public class LlmService {
 		log.debug("LLM API 호출 시작 - query: {}", query);
 
 		return llmWebClient.post()
-				.uri("/infer")
-				.bodyValue(Map.of("query", query, "max_length", 512))
+				.uri("/infer/medical")
+				.bodyValue(Map.of("query", query, "max_length", 512, "temperature", 0.3))
 				.retrieve()
 				.bodyToMono(LlmResponse.class)
 				.map(LlmResponse::getGeneratedText)
