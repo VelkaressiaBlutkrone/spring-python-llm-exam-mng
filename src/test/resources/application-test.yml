@@ -12,3 +12,6 @@ spring:
 llm:
   service:
     url: http://localhost:8000
+    timeout:
+      connect: 5000
+      read: 60000
