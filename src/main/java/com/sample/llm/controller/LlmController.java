@@ -60,6 +60,35 @@ public class LlmController {
 	}
 
 	/**
+	 * POST /api/llm/medical-query
+	 * 의학지식 데이터 기반 LLM 질의
+	 * Python /infer/medical → MySQL 컨텍스트 조회 → Ollama 호출
+	 */
+	@PostMapping("/medical-query")
+	public Mono<String> handleMedicalQuery(
+			@RequestBody LlmRequest request,
+			@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+
+		log.debug("Medical LLM 쿼리 수신 - query: {}, userId: {}", request.getQuery(), userId);
+
+		ChatHistory history = llmService.savePending(request.getQuery(), userId);
+		long startTime = System.currentTimeMillis();
+
+		return llmService.callMedicalLlmApi(request.getQuery())
+				.doOnNext(response -> {
+					long latencyMs = System.currentTimeMillis() - startTime;
+					llmService.updateCompleted(history.getId(), response, latencyMs);
+					log.info("Medical LLM 응답 완료 - historyId: {}, latency: {}ms",
+							history.getId(), latencyMs);
+				})
+				.doOnError(error -> {
+					llmService.updateFailed(history.getId(), error.getMessage());
+					log.error("Medical LLM 호출 실패 - historyId: {}, error: {}",
+							history.getId(), error.getMessage());
+				});
+	}
+
+	/**
 	 * GET /api/llm/history/{userId}
 	 * Step 9: 특정 사용자의 챗 히스토리를 페이징으로 조회합니다.
 	 */
