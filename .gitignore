@@ -36,5 +36,7 @@ out/
 ### VS Code ###
 .vscode/
 
-### Environment ###
-.env
+### Claude Code / OMC ###
+.claude/
+.omc/
+nul

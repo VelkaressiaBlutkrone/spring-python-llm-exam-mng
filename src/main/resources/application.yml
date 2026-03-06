@@ -2,8 +2,8 @@ spring:
   application:
     name: spring_llm_sample_mng
   datasource:
-    url: jdbc:mysql://127.0.0.1:3307/llm_db?allowPublicKeyRetrieval=true&useSSL=false
-    username: ${MYSQL_USERNAME:llm_admin}
+    url: jdbc:mysql://localhost:3307/llm_db
+    username: ${MYSQL_USER:llm_admin}
     password: ${MYSQL_PASSWORD:llm_password}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
