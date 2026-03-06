@@ -56,6 +56,33 @@ public class LlmService {
 	}
 
 	/**
+	 * Python LLM 서버에 의학지식 기반 비동기 추론 요청을 보냅니다.
+	 * /infer/medical 엔드포인트: MySQL 의학데이터 컨텍스트 주입 + Ollama 호출
+	 */
+	public Mono<String> callMedicalLlmApi(String query) {
+		log.debug("Medical LLM API 호출 시작 - query: {}", query);
+
+		return llmWebClient.post()
+				.uri("/infer/medical")
+				.bodyValue(Map.of(
+						"query", query,
+						"max_length", 512,
+						"temperature", 0.3
+				))
+				.retrieve()
+				.bodyToMono(LlmResponse.class)
+				.map(LlmResponse::getGeneratedText)
+				.onErrorMap(WebClientRequestException.class, e -> {
+					if (e.getCause() instanceof ConnectTimeoutException) {
+						return new LlmTimeoutException("Medical LLM 서버 연결 타임아웃", e);
+					}
+					return new LlmServiceUnavailableException("Medical LLM 서버 연결 실패", e);
+				})
+				.onErrorMap(TimeoutException.class, e ->
+						new LlmTimeoutException("Medical LLM 응답 시간 초과", e));
+	}
+
+	/**
 	 * ChatHistory를 PENDING 상태로 저장합니다.
 	 * Step 7: userId가 있으면 User를 조회하여 연결합니다.
 	 * RULE_SPRING.md: @Transactional 적용, status 필수 저장
