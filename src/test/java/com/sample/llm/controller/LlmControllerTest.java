@@ -162,6 +162,90 @@ class LlmControllerTest {
 	}
 
 	// ============================================================
+	// POST /api/llm/medical-query 테스트
+	// ============================================================
+
+	@Test
+	@DisplayName("POST /api/llm/medical-query - 정상 응답")
+	void handleMedicalQuery_success() throws Exception {
+		// given
+		ChatHistory pendingHistory = new ChatHistory("두통이 심한데 어느 과로 가야 하나요?", "PENDING");
+		pendingHistory.setId(10L);
+
+		when(llmService.savePending(eq("두통이 심한데 어느 과로 가야 하나요?"), any()))
+				.thenReturn(pendingHistory);
+		when(llmService.callMedicalLlmApi("두통이 심한데 어느 과로 가야 하나요?"))
+				.thenReturn(Mono.just("두통과 어지럼증 증상은 신경과 진료를 추천드립니다."));
+
+		// when
+		MvcResult mvcResult = mockMvc.perform(post("/api/llm/medical-query")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"query\": \"두통이 심한데 어느 과로 가야 하나요?\"}"))
+				.andExpect(request().asyncStarted())
+				.andReturn();
+
+		// then
+		mockMvc.perform(asyncDispatch(mvcResult))
+				.andExpect(status().isOk())
+				.andExpect(content().string("두통과 어지럼증 증상은 신경과 진료를 추천드립니다."));
+
+		verify(llmService).savePending(eq("두통이 심한데 어느 과로 가야 하나요?"), any());
+		verify(llmService).callMedicalLlmApi("두통이 심한데 어느 과로 가야 하나요?");
+	}
+
+	@Test
+	@DisplayName("POST /api/llm/medical-query - LLM 서버 연결 실패 시 503")
+	void handleMedicalQuery_serviceUnavailable() throws Exception {
+		// given
+		ChatHistory pendingHistory = new ChatHistory("의학 질문", "PENDING");
+		pendingHistory.setId(11L);
+
+		when(llmService.savePending(eq("의학 질문"), any()))
+				.thenReturn(pendingHistory);
+		when(llmService.callMedicalLlmApi("의학 질문"))
+				.thenReturn(Mono.error(new LlmServiceUnavailableException(
+						"Medical LLM 서버 연결 실패", new RuntimeException("Connection refused"))));
+
+		// when
+		MvcResult mvcResult = mockMvc.perform(post("/api/llm/medical-query")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"query\": \"의학 질문\"}"))
+				.andExpect(request().asyncStarted())
+				.andReturn();
+
+		// then
+		mockMvc.perform(asyncDispatch(mvcResult))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.detail").value("LLM 서버를 사용할 수 없습니다"));
+	}
+
+	@Test
+	@DisplayName("POST /api/llm/medical-query - LLM 타임아웃 시 504")
+	void handleMedicalQuery_timeout() throws Exception {
+		// given
+		ChatHistory pendingHistory = new ChatHistory("타임아웃 의학 질문", "PENDING");
+		pendingHistory.setId(12L);
+
+		when(llmService.savePending(eq("타임아웃 의학 질문"), any()))
+				.thenReturn(pendingHistory);
+		when(llmService.callMedicalLlmApi("타임아웃 의학 질문"))
+				.thenReturn(Mono.error(new LlmTimeoutException(
+						"Medical LLM 응답 시간 초과", new RuntimeException("Timeout"))));
+
+		// when
+		MvcResult mvcResult = mockMvc.perform(post("/api/llm/medical-query")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"query\": \"타임아웃 의학 질문\"}"))
+				.andExpect(request().asyncStarted())
+				.andReturn();
+
+		// then
+		mockMvc.perform(asyncDispatch(mvcResult))
+				.andExpect(status().isGatewayTimeout())
+				.andExpect(jsonPath("$.detail").value("LLM 응답 시간 초과"));
+	}
+
+	// ============================================================
 	// GET /api/llm/history/{userId} 테스트
 	// ============================================================
 
