@@ -1,21 +1,26 @@
 package com.sample.llm.service;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.sample.llm.dto.LlmResponse;
 import com.sample.llm.entity.ChatHistory;
 import com.sample.llm.entity.User;
+import com.sample.llm.exception.LlmServiceUnavailableException;
+import com.sample.llm.exception.LlmTimeoutException;
 import com.sample.llm.repository.ChatHistoryRepository;
 import com.sample.llm.repository.UserRepository;
+import io.netty.channel.ConnectTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import reactor.core.publisher.Mono;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 @Service
 @RequiredArgsConstructor
@@ -39,7 +44,15 @@ public class LlmService {
 				.bodyValue(Map.of("query", query))
 				.retrieve()
 				.bodyToMono(LlmResponse.class)
-				.map(LlmResponse::getGeneratedText);
+				.map(LlmResponse::getGeneratedText)
+				.onErrorMap(WebClientRequestException.class, e -> {
+					if (e.getCause() instanceof ConnectTimeoutException) {
+						return new LlmTimeoutException("LLM 서버 연결 타임아웃", e);
+					}
+					return new LlmServiceUnavailableException("LLM 서버 연결 실패", e);
+				})
+				.onErrorMap(TimeoutException.class, e ->
+						new LlmTimeoutException("LLM 응답 시간 초과", e));
 	}
 
 	/**
