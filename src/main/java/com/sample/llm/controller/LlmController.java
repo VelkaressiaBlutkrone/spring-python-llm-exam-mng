@@ -1,10 +1,17 @@
 package com.sample.llm.controller;
 
+import com.sample.llm.dto.ChatHistoryResponse;
 import com.sample.llm.dto.LlmRequest;
 import com.sample.llm.entity.ChatHistory;
+import com.sample.llm.repository.ChatHistoryRepository;
 import com.sample.llm.service.LlmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -19,6 +26,7 @@ import reactor.core.publisher.Mono;
 public class LlmController {
 
 	private final LlmService llmService;
+	private final ChatHistoryRepository chatHistoryRepository;
 
 	/**
 	 * POST /api/llm/query
@@ -49,5 +57,20 @@ public class LlmController {
 					log.error("LLM 호출 실패 - historyId: {}, error: {}",
 							history.getId(), error.getMessage());
 				});
+	}
+
+	/**
+	 * GET /api/llm/history/{userId}
+	 * Step 9: 특정 사용자의 챗 히스토리를 페이징으로 조회합니다.
+	 */
+	@GetMapping("/history/{userId}")
+	public Page<ChatHistoryResponse> getHistory(
+			@PathVariable Long userId,
+			@PageableDefault(size = 20) Pageable pageable) {
+
+		log.debug("히스토리 조회 - userId: {}, page: {}", userId, pageable.getPageNumber());
+
+		return chatHistoryRepository.findByUser_IdOrderByTimestampDesc(userId, pageable)
+				.map(ChatHistoryResponse::from);
 	}
 }
