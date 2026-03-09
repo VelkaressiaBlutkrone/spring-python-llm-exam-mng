@@ -40,3 +40,8 @@ out/
 .claude/
 .omc/
 nul
+
+### Python LLM ###
+python-llm/chroma_data/
+__pycache__/
+*.pyc

@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     # Ollama
     ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama 서버 URL")
     ollama_model: str = Field(default="gemma3:4b", description="Ollama 모델명")
+    ollama_embed_model: str = Field(default="nomic-embed-text", description="Ollama 임베딩 모델명")
+
+    # ChromaDB (벡터 검색)
+    chroma_persist_dir: str = Field(default="./chroma_data", description="ChromaDB 저장 경로")
+    chroma_collection: str = Field(default="medical_docs", description="ChromaDB 컬렉션명")
+    vector_search_top_k: int = Field(default=3, ge=1, le=20, description="벡터 검색 상위 K건")
+    use_vector_search: bool = Field(default=True, description="벡터 검색 사용 여부")
 
     # MySQL (의학데이터 조회)
     mysql_host: str = Field(default="localhost", description="MySQL 호스트")
