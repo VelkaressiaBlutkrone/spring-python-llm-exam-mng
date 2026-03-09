@@ -5,9 +5,11 @@ PRD 기반: Spring Boot에서 HTTP 호출, RAG 없이 순수 LLM 추론
 
 import logging
 
+import json
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import httpx
 
@@ -223,6 +225,87 @@ async def infer_medical(request: InferRequest) -> InferResponse:
 
     logger.info("Medical infer response: length=%d", len(generated_text))
     return InferResponse(generated_text=generated_text)
+
+
+@app.post("/infer/medical/stream")
+async def infer_medical_stream(request: InferRequest):
+    """
+    의학지식 기반 LLM 스트리밍 추론 (SSE)
+    Ollama stream:true → Server-Sent Events로 토큰 단위 전송
+    """
+    query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
+    logger.info("Medical stream request: query=%s", repr(query_preview))
+
+    settings = get_settings()
+
+    corrected_query = correct_typos(request.query)
+    medical_context = await build_medical_context(corrected_query)
+    logger.info("Medical context (stream): %d chars", len(medical_context))
+
+    system_prompt = (
+        "당신은 한국의 전문 의학 AI 어시스턴트입니다.\n"
+        "반드시 한국어로만 답변하세요. 중국어, 일본어, 영어 등 다른 언어를 절대 사용하지 마세요.\n\n"
+        "답변 형식:\n"
+        "1. **추천 진료과**를 가장 먼저 안내하세요 (예: 신경과, 내과, 정형외과 등).\n"
+        "2. 해당 진료과를 추천하는 이유를 간단히 설명하세요.\n"
+        "3. 증상에 따른 응급 상황 판단 기준을 안내하세요.\n"
+        "4. 아래 참고 자료가 있으면 이를 기반으로 답변하고, "
+        "없으면 일반 의학 지식으로 답변하되 '전문의 상담을 권장합니다'라고 안내하세요.\n\n"
+        "사용자 질문 처리 규칙:\n"
+        "1. 사용자 질문에는 철자 오류나 의학 용어 오타가 있을 수 있습니다.\n"
+        "2. 문맥을 기반으로 가장 가능성이 높은 올바른 의학 용어로 해석하여 답변하세요.\n"
+        "3. 특히 신체 부위, 질병명, 증상명, 진료과 관련 단어는 의학적으로 타당한 용어로 자동 보정하여 이해하세요.\n"
+        "4. 오타가 있더라도 이를 지적하거나 수정 내용을 설명하지 말고 자연스럽게 올바른 용어로 답변하세요.\n"
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    if medical_context:
+        messages.append({"role": "system", "content": medical_context})
+    messages.append({"role": "user", "content": corrected_query})
+
+    payload = {
+        "model": settings.ollama_model,
+        "messages": messages,
+        "stream": True,
+        "options": {
+            "temperature": request.temperature,
+            "num_predict": request.max_length,
+        },
+    }
+
+    async def generate_sse():
+        try:
+            async with httpx.AsyncClient(timeout=float(settings.llm_infer_timeout_sec)) as client:
+                async with client.stream(
+                    "POST",
+                    f"{settings.ollama_base_url}/api/chat",
+                    json=payload,
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        chunk = json.loads(line)
+                        token = chunk.get("message", {}).get("content", "")
+                        if token:
+                            data = json.dumps({"token": token}, ensure_ascii=False)
+                            yield f"data: {data}\n\n"
+                        if chunk.get("done", False):
+                            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            logger.error("Stream error: %s", exc)
+            error_data = json.dumps({"error": str(exc)}, ensure_ascii=False)
+            yield f"data: {error_data}\n\n"
+
+    return StreamingResponse(
+        generate_sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 if __name__ == "__main__":

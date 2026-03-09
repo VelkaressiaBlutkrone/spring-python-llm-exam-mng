@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     llm_infer_timeout_sec: int = Field(default=60, ge=1, le=600, description="추론 타임아웃(초)")
     llm_input_max_length: int = Field(default=2048, ge=1, le=32768, description="입력 최대 문자 수")
     llm_fallback_response: str = Field(default="", description="LLM 실패 시 반환할 기본 응답")
+    medical_context_max_chars: int = Field(default=1500, ge=100, le=8000, description="의학 컨텍스트 최대 문자 수")
 
     # Ollama
     ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama 서버 URL")
