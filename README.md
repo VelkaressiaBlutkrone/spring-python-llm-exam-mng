@@ -103,6 +103,8 @@ pip install -r requirements.txt
 
 LLM 백엔드를 선택하여 실행합니다:
 
+**Linux / Mac (bash)**
+
 ```bash
 # Ollama 모드 (로컬 LLM, 권장)
 LLM_BACKEND=ollama OLLAMA_MODEL=qwen2.5:7b \
@@ -113,6 +115,19 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 # Mock 모드 (GPU 없이 테스트)
 LLM_FALLBACK_MOCK=1 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Windows PowerShell**
+
+```powershell
+# Ollama 모드 (로컬 LLM, 권장)
+$env:LLM_BACKEND="ollama"; $env:OLLAMA_MODEL="qwen2.5:7b"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+# Hugging Face 모드 (GPU 필요)
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+# Mock 모드 (GPU 없이 테스트)
+$env:LLM_FALLBACK_MOCK="1"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 4. Spring Boot 애플리케이션 실행
