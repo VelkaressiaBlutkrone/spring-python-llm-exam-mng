@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 @RestController
@@ -131,6 +133,20 @@ public class LlmController {
 					log.error("Medical+Doctor 호출 실패 - historyId: {}, error: {}",
 							history.getId(), error.getMessage());
 				});
+	}
+
+	/**
+	 * POST /api/llm/query/medical/stream
+	 * SSE 스트리밍: 토큰 단위로 실시간 전송하여 체감 응답속도 개선
+	 */
+	@PostMapping(value = "/query/medical/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public Flux<String> handleMedicalQueryStream(
+			@RequestBody LlmRequest request,
+			@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+
+		log.debug("Medical Stream 쿼리 수신 - query: {}, userId: {}", request.getQuery(), userId);
+
+		return llmService.callMedicalLlmApiStream(request.getQuery());
 	}
 
 	/**

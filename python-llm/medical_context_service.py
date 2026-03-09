@@ -157,4 +157,19 @@ async def build_medical_context(query: str) -> str:
             parts.append(f"{c['content'][:800]}")
             parts.append("")
 
-    return "\n".join(parts) if parts else ""
+    context = "\n".join(parts) if parts else ""
+
+    # 컨텍스트 길이 제한 (프롬프트 최적화)
+    settings = get_settings()
+    max_chars = settings.medical_context_max_chars
+    if len(context) > max_chars:
+        # 마지막 완전한 줄 기준으로 자르기
+        truncated = context[:max_chars]
+        last_newline = truncated.rfind("\n")
+        if last_newline > 0:
+            context = truncated[:last_newline]
+        else:
+            context = truncated
+        logger.info("Medical context truncated: %d → %d chars", len("\n".join(parts)), len(context))
+
+    return context
