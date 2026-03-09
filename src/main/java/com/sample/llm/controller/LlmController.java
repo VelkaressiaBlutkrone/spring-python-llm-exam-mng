@@ -1,9 +1,13 @@
 package com.sample.llm.controller;
 
 import com.sample.llm.dto.ChatHistoryResponse;
+import com.sample.llm.dto.DoctorWithScheduleDto;
 import com.sample.llm.dto.LlmRequest;
+import com.sample.llm.dto.MedicalLlmResponse;
 import com.sample.llm.entity.ChatHistory;
 import com.sample.llm.repository.ChatHistoryRepository;
+import com.sample.llm.service.DoctorService;
+import com.sample.llm.service.LlmResponseParser;
 import com.sample.llm.service.LlmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +31,8 @@ public class LlmController {
 
 	private final LlmService llmService;
 	private final ChatHistoryRepository chatHistoryRepository;
+	private final DoctorService doctorService;
+	private final LlmResponseParser llmResponseParser;
 
 	/**
 	 * POST /api/llm/query
@@ -84,6 +90,45 @@ public class LlmController {
 				.doOnError(error -> {
 					llmService.updateFailed(history.getId(), error.getMessage());
 					log.error("Medical LLM 호출 실패 - historyId: {}, error: {}",
+							history.getId(), error.getMessage());
+				});
+	}
+
+	/**
+	 * POST /api/llm/query/medical
+	 * 의료 상담 + 추천 진료과 의사 목록 통합 반환
+	 * Python /infer/medical 호출 → 진료과 파싱 → 의사 목록 조회 → 통합 응답
+	 */
+	@PostMapping("/query/medical")
+	public Mono<MedicalLlmResponse> handleMedicalQueryWithDoctors(
+			@RequestBody LlmRequest request,
+			@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+
+		log.debug("Medical+Doctor 쿼리 수신 - query: {}, userId: {}", request.getQuery(), userId);
+
+		ChatHistory history = llmService.savePending(request.getQuery(), userId);
+		long startTime = System.currentTimeMillis();
+
+		return llmService.callMedicalLlmApi(request.getQuery())
+				.map(response -> {
+					long latencyMs = System.currentTimeMillis() - startTime;
+					llmService.updateCompleted(history.getId(), response, latencyMs);
+
+					String department = llmResponseParser.extractDepartment(response);
+					String reason = llmResponseParser.extractRecommendationReason(response);
+
+					java.util.List<DoctorWithScheduleDto> doctors = (department != null)
+							? doctorService.findDoctorsWithSchedule(department)
+							: java.util.List.of();
+
+					log.info("Medical+Doctor 응답 - dept: {}, doctors: {}, latency: {}ms",
+							department, doctors.size(), latencyMs);
+
+					return new MedicalLlmResponse(response, department, reason, doctors);
+				})
+				.doOnError(error -> {
+					llmService.updateFailed(history.getId(), error.getMessage());
+					log.error("Medical+Doctor 호출 실패 - historyId: {}, error: {}",
 							history.getId(), error.getMessage());
 				});
 	}

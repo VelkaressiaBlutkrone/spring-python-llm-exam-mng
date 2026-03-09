@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 의료 상담</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 24px;
+            color: #1a73e8;
+            font-size: 1.6rem;
+        }
+
+        /* 입력 영역 */
+        .query-section {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .query-section textarea {
+            width: 100%;
+            min-height: 80px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 15px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .query-section textarea:focus {
+            outline: none;
+            border-color: #1a73e8;
+        }
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary {
+            background: #1a73e8;
+            color: #fff;
+            flex: 1;
+        }
+        .btn-primary:hover { background: #1557b0; }
+        .btn-primary:disabled {
+            background: #94bef7;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #e8eaed;
+            color: #333;
+        }
+        .btn-secondary:hover { background: #d2d5d9; }
+
+        /* 로딩 */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        .loading.active { display: block; }
+        .spinner {
+            width: 36px; height: 36px;
+            border: 3px solid #e8eaed;
+            border-top-color: #1a73e8;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 결과 영역 */
+        .result-section {
+            display: none;
+        }
+        .result-section.active { display: block; }
+
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 16px;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a73e8;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e8f0fe;
+        }
+
+        /* 진료과 추천 */
+        .department-badge {
+            display: inline-block;
+            background: #e8f0fe;
+            color: #1a73e8;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .reason-text {
+            color: #555;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        /* LLM 응답 */
+        .llm-response {
+            white-space: pre-wrap;
+            line-height: 1.7;
+            font-size: 14px;
+            color: #333;
+        }
+
+        /* 의사 목록 테이블 */
+        .doctor-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .doctor-table th {
+            background: #f8f9fa;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #555;
+            border-bottom: 2px solid #e8eaed;
+        }
+        .doctor-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .doctor-table tr:hover td {
+            background: #f8f9fa;
+        }
+        .no-doctors {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-size: 14px;
+        }
+
+        /* 에러 */
+        .error-section {
+            display: none;
+            background: #fce8e6;
+            border-radius: 12px;
+            padding: 16px 20px;
+            color: #c5221f;
+            margin-bottom: 16px;
+        }
+        .error-section.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LLM 의료 상담</h1>
+
+        <!-- 입력 -->
+        <div class="query-section">
+            <textarea id="queryInput" placeholder="증상을 입력하세요. (예: 무릎이 아프고 걸을 때 통증이 심해요)"></textarea>
+            <div class="btn-group">
+                <button class="btn btn-primary" id="submitBtn" onclick="submitQuery()">상담하기</button>
+                <button class="btn btn-secondary" onclick="clearAll()">초기화</button>
+            </div>
+        </div>
+
+        <!-- 로딩 -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>AI가 답변을 생성하고 있습니다...</p>
+        </div>
+
+        <!-- 에러 -->
+        <div class="error-section" id="errorSection"></div>
+
+        <!-- 결과 -->
+        <div class="result-section" id="resultSection">
+            <!-- 진료과 추천 -->
+            <div class="card" id="departmentCard">
+                <div class="card-title">추천 진료과</div>
+                <div class="department-badge" id="departmentBadge"></div>
+                <div class="reason-text" id="reasonText"></div>
+            </div>
+
+            <!-- 의사 목록 -->
+            <div class="card" id="doctorCard">
+                <div class="card-title" id="doctorCardTitle">의사 목록</div>
+                <div id="doctorList"></div>
+            </div>
+
+            <!-- LLM 전체 응답 -->
+            <div class="card">
+                <div class="card-title">AI 상담 응답</div>
+                <div class="llm-response" id="llmResponse"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api/llm/query/medical';
+
+        async function submitQuery() {
+            const query = document.getElementById('queryInput').value.trim();
+            if (!query) return;
+
+            // UI 상태 전환
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('resultSection').classList.remove('active');
+            document.getElementById('errorSection').classList.remove('active');
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || '서버 오류가 발생했습니다 (' + response.status + ')');
+                }
+
+                const data = await response.json();
+                renderResult(data);
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('loading').classList.remove('active');
+            }
+        }
+
+        function renderResult(data) {
+            // 진료과 추천 카드
+            const deptCard = document.getElementById('departmentCard');
+            if (data.recommendedDepartment) {
+                deptCard.style.display = 'block';
+                document.getElementById('departmentBadge').textContent = data.recommendedDepartment;
+                document.getElementById('reasonText').textContent = data.recommendationReason || '';
+            } else {
+                deptCard.style.display = 'none';
+            }
+
+            // 의사 목록
+            const doctorCard = document.getElementById('doctorCard');
+            const doctorList = document.getElementById('doctorList');
+
+            if (data.doctors && data.doctors.length > 0) {
+                doctorCard.style.display = 'block';
+                document.getElementById('doctorCardTitle').textContent =
+                    data.recommendedDepartment + ' 의사 목록';
+
+                let html = '<table class="doctor-table">';
+                html += '<thead><tr><th>이름</th><th>전문분야</th><th>소속병원</th><th>진료 스케줄</th></tr></thead>';
+                html += '<tbody>';
+                data.doctors.forEach(doc => {
+                    html += '<tr>';
+                    html += '<td>' + escapeHtml(doc.name) + '</td>';
+                    html += '<td>' + escapeHtml(doc.specialty || '-') + '</td>';
+                    html += '<td>' + escapeHtml(doc.hospital) + '</td>';
+                    html += '<td>' + formatSchedules(doc.schedules) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                doctorList.innerHTML = html;
+            } else {
+                doctorCard.style.display = 'none';
+            }
+
+            // LLM 전체 응답 (마크다운 렌더링, 추천 진료과 라인 중복 제거)
+            let responseText = data.generatedText || '';
+            if (data.recommendedDepartment) {
+                // "추천 진료과: XXX" 라인 제거 (이미 카드에 표시됨)
+                responseText = responseText.replace(/\*{0,2}추천\s*진료과\*{0,2}\s*[:：]\s*\*{0,2}[^\n]+\*{0,2}\s*\n*/g, '');
+                // 추천 이유도 카드에 표시되므로 중복 제거 (첫 문단)
+                if (data.recommendationReason) {
+                    responseText = responseText.replace(data.recommendationReason, '');
+                }
+                // 앞쪽 빈줄 정리
+                responseText = responseText.replace(/^\s*\n+/, '');
+            }
+            document.getElementById('llmResponse').innerHTML = renderMarkdown(responseText);
+
+            document.getElementById('resultSection').classList.add('active');
+        }
+
+        function renderMarkdown(text) {
+            let html = escapeHtml(text);
+            // **bold** → <strong>
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            // *italic* → <em>
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            // 줄바꿈 → <br>
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        function showError(message) {
+            const el = document.getElementById('errorSection');
+            el.textContent = message;
+            el.classList.add('active');
+        }
+
+        function clearAll() {
+            document.getElementById('queryInput').value = '';
+            document.getElementById('resultSection').classList.remove('active');
+            document.getElementById('errorSection').classList.remove('active');
+            document.getElementById('queryInput').focus();
+        }
+
+        function formatSchedules(schedules) {
+            if (!schedules || schedules.length === 0) return '-';
+            const dayMap = { MON: '월', TUE: '화', WED: '수', THU: '목', FRI: '금', SAT: '토', SUN: '일' };
+            return schedules
+                .filter(s => s.available !== false)
+                .map(s => {
+                    const day = dayMap[s.dayOfWeek] || s.dayOfWeek;
+                    const start = s.startTime ? s.startTime.substring(0, 5) : '';
+                    const end = s.endTime ? s.endTime.substring(0, 5) : '';
+                    return day + ' ' + start + '~' + end;
+                })
+                .join(', ');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Enter 키로 전송 (Shift+Enter는 줄바꿈)
+        document.getElementById('queryInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitQuery();
+            }
+        });
+    </script>
+</body>
+</html>

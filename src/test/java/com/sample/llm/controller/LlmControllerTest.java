@@ -1,9 +1,13 @@
 package com.sample.llm.controller;
 
+import com.sample.llm.dto.DoctorScheduleDto;
+import com.sample.llm.dto.DoctorWithScheduleDto;
 import com.sample.llm.entity.ChatHistory;
 import com.sample.llm.exception.LlmServiceUnavailableException;
 import com.sample.llm.exception.LlmTimeoutException;
 import com.sample.llm.repository.ChatHistoryRepository;
+import com.sample.llm.service.DoctorService;
+import com.sample.llm.service.LlmResponseParser;
 import com.sample.llm.service.LlmService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +23,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -48,6 +53,12 @@ class LlmControllerTest {
 
 	@MockitoBean
 	private ChatHistoryRepository chatHistoryRepository;
+
+	@MockitoBean
+	private DoctorService doctorService;
+
+	@MockitoBean
+	private LlmResponseParser llmResponseParser;
 
 	// ============================================================
 	// POST /api/llm/query 테스트
@@ -310,5 +321,85 @@ class LlmControllerTest {
 				.andExpect(jsonPath("$.content").isArray())
 				.andExpect(jsonPath("$.content.length()").value(0))
 				.andExpect(jsonPath("$.totalElements").value(0));
+	}
+
+	// ============================================================
+	// POST /api/llm/query/medical 테스트
+	// ============================================================
+
+	@Test
+	@DisplayName("POST /api/llm/query/medical - 진료과 + 의사 목록 통합 응답")
+	void handleMedicalQueryWithDoctors_success() throws Exception {
+		// given
+		String llmResponse = "**추천 진료과**: 정형외과\n\n무릎 통증은 관절 문제를 의심할 수 있습니다.";
+
+		ChatHistory pendingHistory = new ChatHistory("무릎이 아파요", "PENDING");
+		pendingHistory.setId(20L);
+
+		when(llmService.savePending(eq("무릎이 아파요"), any()))
+				.thenReturn(pendingHistory);
+		when(llmService.callMedicalLlmApi("무릎이 아파요"))
+				.thenReturn(Mono.just(llmResponse));
+		when(llmResponseParser.extractDepartment(llmResponse))
+				.thenReturn("정형외과");
+		when(llmResponseParser.extractRecommendationReason(llmResponse))
+				.thenReturn("무릎 통증은 관절 문제를 의심할 수 있습니다.");
+		when(doctorService.findDoctorsWithSchedule("정형외과"))
+				.thenReturn(List.of(
+						new DoctorWithScheduleDto(1L, "김정형", "정형외과", "관절외과", "서울대학교병원", null, null, null,
+								List.of(new DoctorScheduleDto("MON", LocalTime.of(9, 0), LocalTime.of(17, 0), true))),
+						new DoctorWithScheduleDto(2L, "이관절", "정형외과", "척추외과", "세브란스병원", null, null, null,
+								List.of(new DoctorScheduleDto("TUE", LocalTime.of(10, 0), LocalTime.of(18, 0), true)))
+				));
+
+		// when
+		MvcResult mvcResult = mockMvc.perform(post("/api/llm/query/medical")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"query\": \"무릎이 아파요\"}"))
+				.andExpect(request().asyncStarted())
+				.andReturn();
+
+		// then
+		mockMvc.perform(asyncDispatch(mvcResult))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.generatedText").value(llmResponse))
+				.andExpect(jsonPath("$.recommendedDepartment").value("정형외과"))
+				.andExpect(jsonPath("$.recommendationReason").value("무릎 통증은 관절 문제를 의심할 수 있습니다."))
+				.andExpect(jsonPath("$.doctors").isArray())
+				.andExpect(jsonPath("$.doctors.length()").value(2))
+				.andExpect(jsonPath("$.doctors[0].name").value("김정형"))
+				.andExpect(jsonPath("$.doctors[1].name").value("이관절"));
+	}
+
+	@Test
+	@DisplayName("POST /api/llm/query/medical - 진료과 추출 실패 시 의사 목록 빈 배열")
+	void handleMedicalQueryWithDoctors_noDepartment() throws Exception {
+		// given
+		String llmResponse = "일반적인 건강 상담 답변입니다.";
+
+		ChatHistory pendingHistory = new ChatHistory("건강 상담", "PENDING");
+		pendingHistory.setId(21L);
+
+		when(llmService.savePending(eq("건강 상담"), any()))
+				.thenReturn(pendingHistory);
+		when(llmService.callMedicalLlmApi("건강 상담"))
+				.thenReturn(Mono.just(llmResponse));
+		when(llmResponseParser.extractDepartment(llmResponse))
+				.thenReturn(null);
+
+		// when
+		MvcResult mvcResult = mockMvc.perform(post("/api/llm/query/medical")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"query\": \"건강 상담\"}"))
+				.andExpect(request().asyncStarted())
+				.andReturn();
+
+		// then
+		mockMvc.perform(asyncDispatch(mvcResult))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.generatedText").value(llmResponse))
+				.andExpect(jsonPath("$.recommendedDepartment").doesNotExist())
+				.andExpect(jsonPath("$.doctors").isArray())
+				.andExpect(jsonPath("$.doctors.length()").value(0));
 	}
 }

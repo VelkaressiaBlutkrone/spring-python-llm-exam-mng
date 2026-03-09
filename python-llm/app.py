@@ -14,7 +14,9 @@ import httpx
 from config import get_settings
 from llm_service import generate
 from medical_context_service import build_medical_context, close_pool, get_pool
+from response_cleaner import clean_llm_response
 from schemas import InferRequest, InferResponse
+from typo_corrector import correct_typos
 
 # 로깅 설정
 logging.basicConfig(
@@ -120,12 +122,14 @@ async def infer(request: InferRequest) -> InferResponse:
 
     settings = get_settings()
 
+    corrected = correct_typos(request.query)
+
     try:
         if settings.llm_backend == "ollama":
             from ollama_service import generate_with_ollama
 
             generated_text = await generate_with_ollama(
-                query=request.query,
+                query=corrected,
                 max_length=request.max_length,
                 temperature=request.temperature,
                 top_p=request.top_p or 1.0,
@@ -134,7 +138,7 @@ async def infer(request: InferRequest) -> InferResponse:
             from llm_service import generate
 
             generated_text = generate(
-                query=request.query,
+                query=corrected,
                 max_length=request.max_length,
                 temperature=request.temperature,
                 top_p=request.top_p or 1.0,
@@ -165,26 +169,36 @@ async def infer_medical(request: InferRequest) -> InferResponse:
 
     settings = get_settings()
 
+    # (0) 오타 교정
+    corrected_query = correct_typos(request.query)
+
     # (1) 의학 컨텍스트 조회
-    medical_context = await build_medical_context(request.query)
+    medical_context = await build_medical_context(corrected_query)
     logger.info("Medical context: %d chars", len(medical_context))
 
     # (2) 프롬프트 조합
     system_prompt = (
         "당신은 한국의 전문 의학 AI 어시스턴트입니다.\n"
         "반드시 한국어로만 답변하세요. 중국어, 일본어, 영어 등 다른 언어를 절대 사용하지 마세요.\n\n"
+
         "답변 형식:\n"
         "1. **추천 진료과**를 가장 먼저 안내하세요 (예: 신경과, 내과, 정형외과 등).\n"
         "2. 해당 진료과를 추천하는 이유를 간단히 설명하세요.\n"
         "3. 증상에 따른 응급 상황 판단 기준을 안내하세요.\n"
         "4. 아래 참고 자료가 있으면 이를 기반으로 답변하고, "
-        "없으면 일반 의학 지식으로 답변하되 '전문의 상담을 권장합니다'라고 안내하세요.\n"
+        "없으면 일반 의학 지식으로 답변하되 '전문의 상담을 권장합니다'라고 안내하세요.\n\n"
+
+        "사용자 질문 처리 규칙:\n"
+        "1. 사용자 질문에는 철자 오류나 의학 용어 오타가 있을 수 있습니다.\n"
+        "2. 문맥을 기반으로 가장 가능성이 높은 올바른 의학 용어로 해석하여 답변하세요.\n"
+        "3. 특히 신체 부위, 질병명, 증상명, 진료과 관련 단어는 의학적으로 타당한 용어로 자동 보정하여 이해하세요.\n"
+        "4. 오타가 있더라도 이를 지적하거나 수정 내용을 설명하지 말고 자연스럽게 올바른 용어로 답변하세요.\n"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
     if medical_context:
         messages.append({"role": "system", "content": medical_context})
-    messages.append({"role": "user", "content": request.query})
+    messages.append({"role": "user", "content": corrected_query})
 
     # (3) Ollama Chat API 호출
     payload = {
@@ -204,7 +218,8 @@ async def infer_medical(request: InferRequest) -> InferResponse:
         )
         response.raise_for_status()
         result = response.json()
-        generated_text = result.get("message", {}).get("content", "")
+        raw_text = result.get("message", {}).get("content", "")
+        generated_text = clean_llm_response(raw_text)
 
     logger.info("Medical infer response: length=%d", len(generated_text))
     return InferResponse(generated_text=generated_text)
