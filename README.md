@@ -1,63 +1,67 @@
-# LLM Sample Management System
+# LLM 의료 상담 시스템
 
-Spring Boot + Python + MySQL 기반의 LLM 추론 샘플 시스템입니다.
-사용자 쿼리를 받아 Python LLM 서버로 추론을 수행하고, 챗 히스토리를 MySQL에 저장합니다.
+Spring Boot + Python + MySQL + Ollama 기반의 의료 상담 LLM 시스템입니다.
+사용자 증상을 입력하면 의학 지식 데이터 기반으로 추천 진료과, 담당 의사, AI 상담 응답을 제공합니다.
 
 ## 기술 스택
 
 | 구성 요소 | 기술 |
 | --------- | ---- |
 | 백엔드 | Spring Boot 4.0.3, Java 21 |
-| 데이터베이스 | MySQL 8.0 |
+| 데이터베이스 | MySQL 8.0 (의학 데이터 + 챗 히스토리) |
 | LLM 서버 | Python 3.10+, FastAPI, Uvicorn |
-| LLM 백엔드 | Hugging Face Transformers 또는 Ollama (로컬 LLM) |
+| LLM 백엔드 | Ollama (gemma3:4b, 로컬 LLM) |
+| RAG/벡터 검색 | ChromaDB + Ollama nomic-embed-text |
 | 비동기 호출 | Spring WebFlux (WebClient) |
+| 스트리밍 | SSE (Server-Sent Events) |
 | ORM | Spring Data JPA / Hibernate |
+| 프론트엔드 | Vanilla HTML/CSS/JS (SPA) |
 
 ## 프로젝트 구조
 
 ```
 spring_llm_sample_mng/
 ├── src/main/java/com/sample/llm/
-│   ├── SpringLlmSampleMngApplication.java
 │   ├── config/
-│   │   ├── DataLoader.java          # 초기 데이터 로딩
-│   │   └── WebClientConfig.java     # WebClient Bean 설정
+│   │   ├── DataLoader.java              # 초기 시드 데이터 로딩
+│   │   └── WebClientConfig.java         # WebClient Bean 설정
 │   ├── controller/
-│   │   └── LlmController.java       # REST API 엔드포인트
+│   │   └── LlmController.java           # REST API (쿼리, 의료상담, 스트리밍)
 │   ├── dto/
-│   │   ├── ChatHistoryResponse.java # 히스토리 응답 DTO
-│   │   ├── ErrorResponse.java       # 에러 응답 DTO
-│   │   ├── LlmRequest.java          # LLM 요청 DTO
-│   │   └── LlmResponse.java         # LLM 응답 DTO
+│   │   ├── DoctorWithScheduleDto.java   # 의사+스케줄 응답 DTO
+│   │   ├── MedicalLlmResponse.java      # 의료상담 통합 응답 DTO
+│   │   ├── LlmRequest.java / LlmResponse.java
+│   │   └── ChatHistoryResponse.java
 │   ├── entity/
-│   │   ├── ChatHistory.java          # 챗 히스토리 엔티티
-│   │   └── User.java                 # 사용자 엔티티
-│   ├── exception/
-│   │   ├── GlobalExceptionHandler.java         # 전역 예외 처리
-│   │   ├── LlmServiceUnavailableException.java # 503 예외
-│   │   └── LlmTimeoutException.java            # 504 예외
-│   ├── repository/
-│   │   ├── ChatHistoryRepository.java
-│   │   └── UserRepository.java
-│   └── service/
-│       └── LlmService.java          # LLM 호출 및 DB 상태 관리
+│   │   ├── ChatHistory.java / User.java
+│   │   ├── Doctor.java / DoctorSchedule.java
+│   │   └── MedicalQa.java / MedicalContent.java
+│   ├── service/
+│   │   ├── LlmService.java             # LLM 호출 (동기/스트리밍)
+│   │   ├── DoctorService.java           # 의사+스케줄 조회
+│   │   └── LlmResponseParser.java      # LLM 응답 파싱 (진료과 추출)
+│   └── exception/                       # 전역 예외 처리
 ├── src/main/resources/
-│   └── application.yml               # 애플리케이션 설정
-├── src/test/java/
-│   └── com/sample/llm/controller/
-│       └── LlmControllerTest.java    # 컨트롤러 단위 테스트
-├── python-llm/                        # Python LLM 서버
-│   ├── app.py                         # FastAPI 앱 (Ollama/HuggingFace 분기)
-│   ├── ollama_service.py              # Ollama API 클라이언트
-│   ├── llm_service.py                 # Hugging Face 추론 서비스
-│   ├── config.py                      # 설정 관리 (Pydantic Settings)
-│   └── tests/                         # pytest 테스트
-├── doc/                               # 프로젝트 문서
-│   ├── SETUP_OLLAMA.md                # Ollama 설치/연동 가이드
-│   └── TASK_LAMA.md                   # Ollama 동작 테스트 기록
-├── docker-compose.yml                 # MySQL 컨테이너 설정
-├── .env.example                       # 환경변수 템플릿
+│   ├── application.yml
+│   └── static/index.html               # 프론트엔드 SPA
+├── python-llm/                          # Python LLM 서버
+│   ├── app.py                           # FastAPI 앱 (의료상담 + SSE 스트리밍)
+│   ├── ollama_service.py                # Ollama API 클라이언트
+│   ├── medical_context_service.py       # 하이브리드 검색 (벡터 + FULLTEXT)
+│   ├── embedding_service.py             # Ollama 임베딩 API 클라이언트
+│   ├── vector_store.py                  # ChromaDB 벡터 저장소
+│   ├── index_medical_data.py            # MySQL → ChromaDB 인덱싱 스크립트
+│   ├── response_cleaner.py              # LLM 응답 후처리 (CJK 필터링)
+│   ├── typo_corrector.py                # 오타 교정
+│   ├── config.py                        # 설정 관리 (Pydantic Settings)
+│   └── tests/                           # pytest 테스트
+├── doc/                                 # 프로젝트 문서
+│   ├── TASK_RAG_VECTOR_SEARCH.md        # RAG/벡터 검색 구현 가이드
+│   ├── TROUBLESHOOTING.md               # 트러블슈팅 가이드 (11건)
+│   ├── SETUP_OLLAMA.md                  # Ollama 설치/연동 가이드
+│   └── PRD.md / ERD.md / RULE_*.md
+├── docker-compose.yml                   # MySQL 컨테이너 설정
+├── .env.example                         # 환경변수 템플릿
 └── build.gradle
 ```
 
@@ -73,14 +77,15 @@ docker-compose up -d
 
 MySQL이 포트 `3307`에서 실행됩니다. (기본 계정: `llm_admin` / `llm_password`)
 
-### 2. (선택) Ollama 서버 실행
+### 2. Ollama 서버 실행
 
-로컬 LLM을 사용하려면 Ollama를 설치하고 모델을 다운로드합니다.
+Ollama를 설치하고 필요한 모델을 다운로드합니다.
 자세한 설정은 [Ollama 설치 가이드](doc/SETUP_OLLAMA.md)를 참고하세요.
 
 ```bash
-# Ollama 설치 후 모델 다운로드 (한국어 권장: qwen2.5:7b)
-ollama pull qwen2.5:7b
+# Ollama 설치 후 모델 다운로드
+ollama pull gemma3:4b              # LLM 추론 모델
+ollama pull nomic-embed-text       # 임베딩 모델 (RAG 벡터 검색용)
 
 # Ollama 서버 실행 (기본 포트 11434)
 ollama serve
@@ -101,36 +106,37 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-LLM 백엔드를 선택하여 실행합니다:
+### 4. (선택) RAG 벡터 인덱싱
+
+MySQL 의학 데이터를 ChromaDB에 벡터 인덱싱합니다.
+이 단계를 건너뛰면 FULLTEXT 검색만 사용됩니다.
+
+```bash
+cd python-llm
+python index_medical_data.py
+```
+
+성공 시 `=== Indexing complete: N total documents in vector store ===` 출력.
+상세 내용: [RAG 벡터 검색 가이드](doc/TASK_RAG_VECTOR_SEARCH.md)
+
+### 5. Python LLM 서버 시작
 
 **Linux / Mac (bash)**
 
 ```bash
-# Ollama 모드 (로컬 LLM, 권장)
-LLM_BACKEND=ollama OLLAMA_MODEL=qwen2.5:7b \
+LLM_BACKEND=ollama OLLAMA_MODEL=gemma3:4b \
   uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-
-# Hugging Face 모드 (GPU 필요)
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-
-# Mock 모드 (GPU 없이 테스트)
-LLM_FALLBACK_MOCK=1 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Windows PowerShell**
 
 ```powershell
-# Ollama 모드 (로컬 LLM, 권장)
-$env:LLM_BACKEND="ollama"; $env:OLLAMA_MODEL="qwen2.5:7b"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-
-# Hugging Face 모드 (GPU 필요)
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-
-# Mock 모드 (GPU 없이 테스트)
-$env:LLM_FALLBACK_MOCK="1"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+$env:LLM_BACKEND="ollama"; $env:OLLAMA_MODEL="gemma3:4b"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. Spring Boot 애플리케이션 실행
+서버 시작 로그에서 `ChromaDB ready: N documents indexed` 확인.
+
+### 6. Spring Boot 애플리케이션 실행
 
 ```bash
 # 환경변수 설정 (.env.example 참고)
@@ -160,43 +166,73 @@ Spring Boot가 포트 `8080`에서 실행됩니다.
 | 변수 | 기본값 | 설명 |
 | ---- | ------ | ---- |
 | `LLM_BACKEND` | `huggingface` | LLM 백엔드 (`huggingface` / `ollama`) |
-| `LLM_MODEL` | `gpt2` | Hugging Face 모델명 |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama 서버 URL |
-| `OLLAMA_MODEL` | `gemma3:4b` | Ollama 모델명 (한국어: `qwen2.5:7b`) |
+| `OLLAMA_MODEL` | `gemma3:4b` | Ollama 추론 모델명 |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Ollama 임베딩 모델명 |
+| `USE_VECTOR_SEARCH` | `True` | 벡터 검색 사용 여부 |
+| `VECTOR_SEARCH_TOP_K` | `3` | 벡터 검색 상위 K건 |
+| `CHROMA_PERSIST_DIR` | `./chroma_data` | ChromaDB 데이터 저장 경로 |
+| `MEDICAL_CONTEXT_MAX_CHARS` | `1500` | 의학 컨텍스트 최대 문자 수 |
 | `LLM_FALLBACK_MOCK` | `false` | Mock 모드 (torch 없이 테스트) |
 
 ## API 사용법
 
-### LLM 쿼리 전송
+### 의료 상담 (추천 진료과 + 의사 목록)
+
+**`POST /api/llm/query/medical`**
+
+의학 지식 기반 LLM 상담 + 추천 진료과 + 해당 의사 목록을 통합 반환합니다.
+
+```bash
+curl -X POST http://localhost:8080/api/llm/query/medical \
+  -H "Content-Type: application/json" \
+  -d '{"query": "무릎이 아프고 걸을 때 통증이 심해요"}'
+```
+
+**응답 예시:**
+
+```json
+{
+  "generatedText": "추천 진료과: 정형외과\n무릎 통증은...",
+  "recommendedDepartment": "정형외과",
+  "recommendationReason": "무릎 관절 통증 및 보행 시 악화 증상",
+  "doctors": [
+    {
+      "name": "이정형",
+      "specialty": "관절외과",
+      "hospital": "서울대학교병원",
+      "schedules": [
+        {"dayOfWeek": "MON", "startTime": "09:00", "endTime": "17:00", "available": true}
+      ]
+    }
+  ]
+}
+```
+
+### 의료 상담 스트리밍 (SSE)
+
+**`POST /api/llm/query/medical/stream`**
+
+SSE(Server-Sent Events)로 토큰 단위 실시간 응답을 전송합니다.
+
+```bash
+curl -N -X POST http://localhost:8080/api/llm/query/medical/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "두통이 심합니다"}'
+```
+
+### 기본 LLM 쿼리
 
 **`POST /api/llm/query`**
 
-LLM에 쿼리를 전송하고 응답을 받습니다. 쿼리와 응답은 자동으로 DB에 저장됩니다.
-
-```bash
-curl -X POST http://localhost:8080/api/llm/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "안녕하세요, 오늘 날씨는?"}'
-```
-
-사용자 ID를 지정하여 히스토리를 사용자와 연결할 수 있습니다:
+일반 LLM 추론 요청. 쿼리와 응답은 자동으로 DB에 저장됩니다.
 
 ```bash
 curl -X POST http://localhost:8080/api/llm/query \
   -H "Content-Type: application/json" \
   -H "X-User-Id: 1" \
-  -d '{"query": "안녕하세요, 오늘 날씨는?"}'
+  -d '{"query": "안녕하세요"}'
 ```
-
-**요청 본문:**
-
-```json
-{
-  "query": "안녕하세요, 오늘 날씨는?"
-}
-```
-
-**응답:** LLM이 생성한 텍스트 (plain text)
 
 ### 챗 히스토리 조회
 
@@ -287,21 +323,49 @@ cd python-llm
 ## 아키텍처
 
 ```text
-[클라이언트]
-    ↓ HTTP
+[프론트엔드 SPA]
+    ↓ SSE 스트리밍 + REST API
 [Spring Boot :8080]
+    ├── LlmController (쿼리/의료상담/스트리밍)
+    ├── DoctorService (의사+스케줄 조회)
+    └── LlmResponseParser (진료과 추출)
     ↓ WebClient
 [Python FastAPI :8000]
-    ↓ LLM_BACKEND 분기
-    ├── ollama → [Ollama :11434] → 로컬 LLM (qwen2.5:7b 등)
-    └── huggingface → [Transformers] → GPU/CPU 모델 (gpt2 등)
+    ├── /infer/medical         → 의학 컨텍스트 + Ollama Chat (동기)
+    ├── /infer/medical/stream  → 의학 컨텍스트 + Ollama Chat (SSE 스트리밍)
+    ├── medical_context_service → 하이브리드 검색
+    │   ├── ChromaDB 벡터 검색 (의미 유사도, 우선)
+    │   └── MySQL FULLTEXT 검색 (키워드, 폴백)
+    └── response_cleaner → CJK 필터링 + 후처리
+    ↓
+[Ollama :11434]
+    ├── gemma3:4b          → LLM 추론
+    └── nomic-embed-text   → 임베딩 (RAG 벡터 검색)
+
+[MySQL :3307]
+    ├── medical_qa / medical_content → 의학 지식 데이터
+    ├── doctors / doctor_schedules   → 의사 + 진료 스케줄
+    └── chat_history / users         → 상담 이력
 ```
+
+## 주요 기능
+
+| 기능 | 설명 |
+| ---- | ---- |
+| 의료 상담 | 증상 입력 → 추천 진료과 + 담당 의사 + AI 상담 응답 |
+| SSE 스트리밍 | 토큰 단위 실시간 응답으로 체감 속도 개선 |
+| RAG 벡터 검색 | ChromaDB + Ollama 임베딩으로 의미 기반 문서 검색 |
+| 하이브리드 검색 | 벡터 검색 우선 → MySQL FULLTEXT 폴백 |
+| 중국어 필터링 | 시스템 프롬프트 강화 + CJK 패턴 실시간 제거 |
+| 오타 교정 | 의학 용어 오타 자동 보정 |
+| 챗 히스토리 | 상담 이력 자동 저장 (PENDING → COMPLETED/FAILED) |
+| 프론트엔드 | 병렬 API 호출, 스트리밍 우선 + 폴백 렌더링 |
 
 ## 참고 문서
 
 - [PRD (제품 요구사항)](doc/PRD.md)
+- [RAG 벡터 검색 가이드](doc/TASK_RAG_VECTOR_SEARCH.md)
+- [트러블슈팅 가이드](doc/TROUBLESHOOTING.md)
 - [Spring Boot 개발 규칙](doc/RULE_SPRING.md)
-- [Spring Boot 작업 목록](doc/TASK_SPRING.md)
 - [Ollama 설치/연동 가이드](doc/SETUP_OLLAMA.md)
-- [Ollama 동작 테스트 기록](doc/TASK_LAMA.md)
 - [Python LLM 모듈 README](python-llm/README.md)

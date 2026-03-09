@@ -54,6 +54,16 @@
     - [원인](#원인-8)
     - [해결](#해결-6)
     - [교훈](#교훈-8)
+  - [10. 스트리밍 응답에 중국어(CJK) 문자 혼입](#10-스트리밍-응답에-중국어cjk-문자-혼입)
+    - [증상](#증상-9)
+    - [원인](#원인-9)
+    - [해결: 2중 방어](#해결-2중-방어)
+    - [교훈](#교훈-9)
+  - [11. Vector DB(ChromaDB) 조회 실패](#11-vector-dbchromadb-조회-실패)
+    - [증상](#증상-10)
+    - [원인 (복합적)](#원인-복합적)
+    - [해결](#해결-8)
+    - [교훈](#교훈-10)
   - [부록: 개발 환경 관련 이슈](#부록-개발-환경-관련-이슈)
     - [Windows CRLF + Tab 들여쓰기](#windows-crlf--tab-들여쓰기)
     - [.gitignore 누락](#gitignore-누락)
@@ -326,6 +336,108 @@ new DoctorScheduleDto("MON", LocalTime.of(9, 0), LocalTime.of(17, 0), true)
 ### 교훈
 - 시드 데이터 범위와 LLM 응답 범위가 일치하지 않을 수 있음
 - 데이터 없는 경우에 대한 UI 안내 메시지 필요
+
+---
+
+## 10. 스트리밍 응답에 중국어(CJK) 문자 혼입
+
+### 증상
+- SSE 스트리밍으로 AI 응답을 실시간 수신할 때 한국어 사이에 중국어 문자가 섞여서 출력됨
+- 비스트리밍(`/infer/medical`) 응답에서는 중국어가 제거되지만, 스트리밍에서는 그대로 노출
+
+### 원인
+1. **`response_cleaner`가 스트리밍에 미적용**: 비스트리밍 응답은 `clean_llm_response()`로 후처리하여 CJK 문자를 제거하지만, 스트리밍은 토큰을 그대로 전달
+2. **gemma3:4b 모델 특성**: 한국어 프롬프트에도 중국어 문자를 간헐적으로 생성 (multilingual 모델 특성)
+3. **시스템 프롬프트 미흡**: "한국어로만 답변" 지시가 모델에 충분히 전달되지 않음
+
+### 해결: 2중 방어
+
+**A. 스트리밍 토큰 실시간 필터링**
+```python
+# app.py - generate_sse() 내부
+raw_token = chunk.get("message", {}).get("content", "")
+if raw_token:
+    token = NON_KOREAN_CJK_PATTERN.sub("", raw_token)
+    if token:
+        data = json.dumps({"token": token}, ensure_ascii=False)
+        yield f"data: {data}\n\n"
+```
+
+**B. 시스템 프롬프트 강화**
+- 영문 지시 추가: `"You MUST respond ONLY in Korean. NEVER use Chinese or Japanese."`
+- 한자 명시 금지: `"한자(漢字)를 사용하지 마세요. 모든 내용을 한글로 작성하세요."`
+- 중복 프롬프트를 `MEDICAL_SYSTEM_PROMPT` 상수로 추출하여 일관성 확보
+
+### 교훈
+- LLM 출력 언어 제어는 프롬프트만으로 100% 보장되지 않음 → **후처리 필터링 필수**
+- 스트리밍과 비스트리밍 경로의 후처리 로직을 동일하게 유지할 것
+- multilingual 모델 사용 시 원하지 않는 언어 혼입은 예상해야 함
+
+---
+
+## 11. Vector DB(ChromaDB) 조회 실패
+
+### 증상
+- 의학 질의 시 벡터 검색이 동작하지 않고 FULLTEXT 검색으로만 폴백됨
+- Python 서버 로그에 `Vector search failed` 경고 또는 `Vector store is empty` 메시지
+
+### 원인 (복합적)
+
+| 로그 메시지 | 원인 | 빈도 |
+|-------------|------|------|
+| `Vector store is empty` | `index_medical_data.py` 미실행 (인덱싱 안 됨) | 가장 흔함 |
+| `ConnectionError` / `ConnectError` | Ollama 서버 미실행 또는 임베딩 모델 미설치 | 흔함 |
+| `Vector search dependencies not available` | `chromadb` 패키지 미설치 | 초기 설정 |
+| `ChromaDB initialization failed` | `chroma_data/` 경로 권한 문제 또는 디스크 부족 | 드묾 |
+
+### 해결
+
+**1단계: 사전 준비**
+```bash
+# Ollama 임베딩 모델 다운로드
+ollama pull nomic-embed-text
+
+# Python 의존성 설치
+cd python-llm
+pip install -r requirements.txt
+```
+
+**2단계: 데이터 인덱싱**
+```bash
+python index_medical_data.py
+```
+성공 시 출력:
+```
+=== Indexing complete: 230 total documents in vector store ===
+```
+
+**3단계: 서버 시작 로그 확인**
+```bash
+uvicorn app:app --port 8000
+```
+정상:
+```
+ChromaDB ready: 230 documents indexed
+```
+실패:
+```
+ChromaDB initialization failed (vector search disabled): ...
+```
+
+**4단계: 벡터 검색 비활성화 (임시)**
+```bash
+USE_VECTOR_SEARCH=False uvicorn app:app --port 8000
+```
+
+### 개선된 로그
+기존에는 `Vector search failed` 한 줄만 출력되었으나, 다음과 같이 상세화:
+- 빈 벡터 스토어일 때 `index_medical_data.py` 실행 안내 + `ollama pull` 안내 포함
+- 예외 타입(`ImportError`, `ConnectionError` 등)을 구분하여 원인 파악 용이
+
+### 교훈
+- 벡터 검색은 **인덱싱 선행 작업**이 필요하므로 서버 시작 시 상태를 로그로 알려야 함
+- 벡터 검색 실패는 서비스 중단이 아닌 **graceful degradation** (FULLTEXT 폴백)으로 처리
+- 설정 플래그(`use_vector_search`)로 즉시 비활성화 가능하게 하여 운영 안정성 확보
 
 ---
 
