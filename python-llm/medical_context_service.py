@@ -130,32 +130,92 @@ async def search_medical_content(
             return await cur.fetchall()
 
 
+async def search_vector_store(query: str, top_k: int = 3) -> list[dict]:
+    """
+    ChromaDB 벡터 검색으로 의미적으로 유사한 문서 조회
+
+    Args:
+        query: 사용자 질문
+        top_k: 상위 결과 수
+
+    Returns:
+        검색 결과 리스트
+    """
+    settings = get_settings()
+    if not settings.use_vector_search:
+        return []
+
+    try:
+        from embedding_service import get_embedding
+        from vector_store import get_document_count, search_similar
+
+        doc_count = get_document_count()
+        if doc_count == 0:
+            logger.warning(
+                "Vector store is empty. Run 'python index_medical_data.py' to index data. "
+                "Also ensure 'ollama pull %s' has been executed.",
+                settings.ollama_embed_model,
+            )
+            return []
+
+        query_embedding = await get_embedding(query)
+        results = search_similar(query_embedding, top_k=top_k)
+        logger.info("Vector search: %d results from %d docs (query: %s...)", len(results), doc_count, query[:30])
+        return results
+    except ImportError as exc:
+        logger.warning("Vector search dependencies not available: %s", exc)
+        return []
+    except Exception as exc:
+        logger.warning("Vector search failed (falling back to FULLTEXT): %s: %s", type(exc).__name__, exc)
+        return []
+
+
 async def build_medical_context(query: str) -> str:
     """
     사용자 질문에 대한 의학 컨텍스트 빌드
-    Q&A + 원천데이터를 조합하여 LLM 프롬프트용 컨텍스트 생성
+    하이브리드 검색: MySQL FULLTEXT + ChromaDB 벡터 검색 결합
     """
+    settings = get_settings()
     parts = []
 
-    # 1. 관련 Q&A 검색
-    qa_results = await search_medical_qa(query, limit=3)
-    if qa_results:
-        parts.append("[참고: 관련 의학 Q&A]")
-        for qa in qa_results:
-            parts.append(f"진료과: {qa['department']}")
-            parts.append(f"Q: {qa['question'][:500]}")
-            parts.append(f"A: {qa['answer'][:500]}")
+    # 1. 벡터 검색 (의미 기반)
+    vector_results = await search_vector_store(query, top_k=settings.vector_search_top_k)
+    if vector_results:
+        parts.append("[참고: 벡터 검색 결과 (의미 유사도)]")
+        for item in vector_results:
+            meta = item.get("metadata", {})
+            doc_type = meta.get("type", "")
+            if doc_type == "qa":
+                dept = meta.get("department", "")
+                if dept:
+                    parts.append(f"진료과: {dept}")
+            elif doc_type == "content":
+                source = meta.get("source", "")
+                if source:
+                    parts.append(f"출처: {source}")
+            parts.append(item["document"][:500])
             parts.append("")
 
-    # 2. 관련 의학 콘텐츠 검색
-    content_results = await search_medical_content(query, limit=2)
-    if content_results:
-        parts.append("[참고: 관련 의학 지식]")
-        for c in content_results:
-            source = c.get("source_spec", "")
-            parts.append(f"출처: {source}")
-            parts.append(f"{c['content'][:800]}")
-            parts.append("")
+    # 2. MySQL FULLTEXT 검색 (키워드 기반) - 벡터 결과가 부족할 때 보완
+    if len(vector_results) < 2:
+        qa_results = await search_medical_qa(query, limit=3)
+        if qa_results:
+            parts.append("[참고: 관련 의학 Q&A]")
+            for qa in qa_results:
+                parts.append(f"진료과: {qa['department']}")
+                parts.append(f"Q: {qa['question'][:500]}")
+                parts.append(f"A: {qa['answer'][:500]}")
+                parts.append("")
+
+    if len(vector_results) < 1:
+        content_results = await search_medical_content(query, limit=2)
+        if content_results:
+            parts.append("[참고: 관련 의학 지식]")
+            for c in content_results:
+                source = c.get("source_spec", "")
+                parts.append(f"출처: {source}")
+                parts.append(f"{c['content'][:800]}")
+                parts.append("")
 
     context = "\n".join(parts) if parts else ""
 

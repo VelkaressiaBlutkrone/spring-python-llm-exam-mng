@@ -93,6 +93,24 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* 의사 목록 로딩 (인라인) */
+        .doctor-loading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px;
+            color: #666;
+            font-size: 14px;
+        }
+        .doctor-loading .mini-spinner {
+            width: 18px; height: 18px;
+            border: 2px solid #e8eaed;
+            border-top-color: #1a73e8;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+
         /* 결과 영역 */
         .result-section {
             display: none;
@@ -204,6 +222,12 @@
 
         <!-- 결과 -->
         <div class="result-section" id="resultSection">
+            <!-- AI 상담 응답 (가장 먼저 표시) -->
+            <div class="card" id="llmCard">
+                <div class="card-title">AI 상담 응답</div>
+                <div class="llm-response" id="llmResponse"></div>
+            </div>
+
             <!-- 진료과 추천 -->
             <div class="card" id="departmentCard">
                 <div class="card-title">추천 진료과</div>
@@ -216,12 +240,6 @@
                 <div class="card-title" id="doctorCardTitle">의사 목록</div>
                 <div id="doctorList"></div>
             </div>
-
-            <!-- LLM 전체 응답 -->
-            <div class="card">
-                <div class="card-title">AI 상담 응답</div>
-                <div class="llm-response" id="llmResponse"></div>
-            </div>
         </div>
     </div>
 
@@ -233,59 +251,64 @@
             const query = document.getElementById('queryInput').value.trim();
             if (!query) return;
 
-            // UI 상태 전환
+            // UI 초기화
             document.getElementById('submitBtn').disabled = true;
             document.getElementById('loading').classList.add('active');
             document.getElementById('resultSection').classList.remove('active');
             document.getElementById('errorSection').classList.remove('active');
+            document.getElementById('departmentCard').style.display = 'none';
+            document.getElementById('doctorCard').style.display = 'none';
+            document.getElementById('llmCard').style.display = 'none';
 
-            let streamedText = '';
+            // 스트리밍 + 의사목록 API를 병렬 실행
+            const streamPromise = streamResponse(query).catch(err => {
+                console.warn('스트리밍 실패:', err);
+                return '';
+            });
 
+            const doctorPromise = fetchDoctorData(query);
+
+            // 스트리밍 완료 대기
+            const streamedText = await streamPromise;
+
+            // 의사 목록 완료 대기 (스트리밍과 병렬로 이미 진행 중)
             try {
-                // 1단계: SSE 스트리밍 시도 (실시간 토큰 표시)
-                streamedText = await streamResponse(query);
-            } catch (streamError) {
-                console.warn('스트리밍 실패, 기존 API로 fallback:', streamError);
-            }
-
-            try {
-                // 2단계: 전체 응답 API로 진료과 + 의사 목록 조회
-                document.getElementById('loading').classList.add('active');
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query })
-                });
-
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    throw new Error(err.detail || '서버 오류가 발생했습니다 (' + response.status + ')');
-                }
-
-                const data = await response.json();
+                const data = await doctorPromise;
                 renderDoctorCards(data);
 
-                // 스트리밍이 실패했거나 비었으면 기존 API 응답으로 AI 텍스트 표시
+                // 스트리밍이 실패했으면 API 응답으로 AI 텍스트 표시
                 if (!streamedText) {
                     renderLlmResponse(data);
                 }
             } catch (error) {
-                showError(error.message);
+                // 스트리밍도 실패한 경우에만 에러 표시
+                if (!streamedText) {
+                    showError(error.message);
+                }
             } finally {
                 document.getElementById('submitBtn').disabled = false;
                 document.getElementById('loading').classList.remove('active');
             }
         }
 
+        async function fetchDoctorData(query) {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || '서버 오류가 발생했습니다 (' + response.status + ')');
+            }
+
+            return response.json();
+        }
+
         async function streamResponse(query) {
             const llmResponseEl = document.getElementById('llmResponse');
             llmResponseEl.textContent = '';
-
-            // 스트리밍 시작 즉시 결과 영역 표시
-            document.getElementById('departmentCard').style.display = 'none';
-            document.getElementById('doctorCard').style.display = 'none';
-            document.getElementById('resultSection').classList.add('active');
-            document.getElementById('loading').classList.remove('active');
 
             const response = await fetch(STREAM_URL, {
                 method: 'POST',
@@ -301,6 +324,7 @@
             const decoder = new TextDecoder();
             let fullText = '';
             let buffer = '';
+            let firstToken = true;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -322,9 +346,15 @@
                             throw new Error(parsed.error);
                         }
                         if (parsed.token) {
+                            // 첫 토큰 도착 시: 로딩 숨기고 AI 응답 카드 표시
+                            if (firstToken) {
+                                firstToken = false;
+                                document.getElementById('loading').classList.remove('active');
+                                document.getElementById('resultSection').classList.add('active');
+                                document.getElementById('llmCard').style.display = 'block';
+                            }
                             fullText += parsed.token;
                             llmResponseEl.innerHTML = renderMarkdown(fullText);
-                            // 자동 스크롤
                             llmResponseEl.scrollTop = llmResponseEl.scrollHeight;
                         }
                     } catch (e) {
@@ -337,6 +367,8 @@
         }
 
         function renderDoctorCards(data) {
+            document.getElementById('resultSection').classList.add('active');
+
             // 진료과 추천 카드
             const deptCard = document.getElementById('departmentCard');
             if (data.recommendedDepartment) {
@@ -372,8 +404,6 @@
             } else {
                 doctorCard.style.display = 'none';
             }
-
-            document.getElementById('resultSection').classList.add('active');
         }
 
         function renderLlmResponse(data) {
@@ -385,6 +415,7 @@
                 }
                 responseText = responseText.replace(/^\s*\n+/, '');
             }
+            document.getElementById('llmCard').style.display = 'block';
             document.getElementById('llmResponse').innerHTML = renderMarkdown(responseText);
         }
 

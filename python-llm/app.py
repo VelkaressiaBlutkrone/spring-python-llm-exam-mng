@@ -16,7 +16,7 @@ import httpx
 from config import get_settings
 from llm_service import generate
 from medical_context_service import build_medical_context, close_pool, get_pool
-from response_cleaner import clean_llm_response
+from response_cleaner import NON_KOREAN_CJK_PATTERN, clean_llm_response
 from schemas import InferRequest, InferResponse
 from typo_corrector import correct_typos
 
@@ -26,6 +26,27 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# 의학 상담 시스템 프롬프트 (공통)
+MEDICAL_SYSTEM_PROMPT = (
+    "You are a Korean medical AI assistant. "
+    "You MUST respond ONLY in Korean (한국어). "
+    "NEVER use Chinese (中文), Japanese (日本語), or any other language.\n\n"
+    "당신은 한국의 전문 의학 AI 어시스턴트입니다.\n"
+    "반드시 한국어로만 답변하세요. 중국어(中文), 일본어, 영어 등 다른 언어를 절대 사용하지 마세요.\n"
+    "한자(漢字)를 사용하지 마세요. 모든 내용을 한글로 작성하세요.\n\n"
+    "답변 형식:\n"
+    "1. **추천 진료과**를 가장 먼저 안내하세요 (예: 신경과, 내과, 정형외과 등).\n"
+    "2. 해당 진료과를 추천하는 이유를 간단히 설명하세요.\n"
+    "3. 증상에 따른 응급 상황 판단 기준을 안내하세요.\n"
+    "4. 아래 참고 자료가 있으면 이를 기반으로 답변하고, "
+    "없으면 일반 의학 지식으로 답변하되 '전문의 상담을 권장합니다'라고 안내하세요.\n\n"
+    "사용자 질문 처리 규칙:\n"
+    "1. 사용자 질문에는 철자 오류나 의학 용어 오타가 있을 수 있습니다.\n"
+    "2. 문맥을 기반으로 가장 가능성이 높은 올바른 의학 용어로 해석하여 답변하세요.\n"
+    "3. 특히 신체 부위, 질병명, 증상명, 진료과 관련 단어는 의학적으로 타당한 용어로 자동 보정하여 이해하세요.\n"
+    "4. 오타가 있더라도 이를 지적하거나 수정 내용을 설명하지 말고 자연스럽게 올바른 용어로 답변하세요.\n"
+)
 
 app = FastAPI(
     title="Python LLM Inference API",
@@ -45,9 +66,18 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    """앱 시작 시 DB 커넥션 풀 초기화"""
+    """앱 시작 시 DB 커넥션 풀 + ChromaDB 초기화"""
     await get_pool()
     logger.info("MySQL connection pool initialized")
+
+    settings = get_settings()
+    if settings.use_vector_search:
+        try:
+            from vector_store import get_collection
+            collection = get_collection()
+            logger.info("ChromaDB ready: %d documents indexed", collection.count())
+        except Exception as exc:
+            logger.warning("ChromaDB initialization failed (vector search disabled): %s", exc)
 
 
 @app.on_event("shutdown")
@@ -179,25 +209,7 @@ async def infer_medical(request: InferRequest) -> InferResponse:
     logger.info("Medical context: %d chars", len(medical_context))
 
     # (2) 프롬프트 조합
-    system_prompt = (
-        "당신은 한국의 전문 의학 AI 어시스턴트입니다.\n"
-        "반드시 한국어로만 답변하세요. 중국어, 일본어, 영어 등 다른 언어를 절대 사용하지 마세요.\n\n"
-
-        "답변 형식:\n"
-        "1. **추천 진료과**를 가장 먼저 안내하세요 (예: 신경과, 내과, 정형외과 등).\n"
-        "2. 해당 진료과를 추천하는 이유를 간단히 설명하세요.\n"
-        "3. 증상에 따른 응급 상황 판단 기준을 안내하세요.\n"
-        "4. 아래 참고 자료가 있으면 이를 기반으로 답변하고, "
-        "없으면 일반 의학 지식으로 답변하되 '전문의 상담을 권장합니다'라고 안내하세요.\n\n"
-
-        "사용자 질문 처리 규칙:\n"
-        "1. 사용자 질문에는 철자 오류나 의학 용어 오타가 있을 수 있습니다.\n"
-        "2. 문맥을 기반으로 가장 가능성이 높은 올바른 의학 용어로 해석하여 답변하세요.\n"
-        "3. 특히 신체 부위, 질병명, 증상명, 진료과 관련 단어는 의학적으로 타당한 용어로 자동 보정하여 이해하세요.\n"
-        "4. 오타가 있더라도 이를 지적하거나 수정 내용을 설명하지 말고 자연스럽게 올바른 용어로 답변하세요.\n"
-    )
-
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = [{"role": "system", "content": MEDICAL_SYSTEM_PROMPT}]
     if medical_context:
         messages.append({"role": "system", "content": medical_context})
     messages.append({"role": "user", "content": corrected_query})
@@ -242,23 +254,7 @@ async def infer_medical_stream(request: InferRequest):
     medical_context = await build_medical_context(corrected_query)
     logger.info("Medical context (stream): %d chars", len(medical_context))
 
-    system_prompt = (
-        "당신은 한국의 전문 의학 AI 어시스턴트입니다.\n"
-        "반드시 한국어로만 답변하세요. 중국어, 일본어, 영어 등 다른 언어를 절대 사용하지 마세요.\n\n"
-        "답변 형식:\n"
-        "1. **추천 진료과**를 가장 먼저 안내하세요 (예: 신경과, 내과, 정형외과 등).\n"
-        "2. 해당 진료과를 추천하는 이유를 간단히 설명하세요.\n"
-        "3. 증상에 따른 응급 상황 판단 기준을 안내하세요.\n"
-        "4. 아래 참고 자료가 있으면 이를 기반으로 답변하고, "
-        "없으면 일반 의학 지식으로 답변하되 '전문의 상담을 권장합니다'라고 안내하세요.\n\n"
-        "사용자 질문 처리 규칙:\n"
-        "1. 사용자 질문에는 철자 오류나 의학 용어 오타가 있을 수 있습니다.\n"
-        "2. 문맥을 기반으로 가장 가능성이 높은 올바른 의학 용어로 해석하여 답변하세요.\n"
-        "3. 특히 신체 부위, 질병명, 증상명, 진료과 관련 단어는 의학적으로 타당한 용어로 자동 보정하여 이해하세요.\n"
-        "4. 오타가 있더라도 이를 지적하거나 수정 내용을 설명하지 말고 자연스럽게 올바른 용어로 답변하세요.\n"
-    )
-
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = [{"role": "system", "content": MEDICAL_SYSTEM_PROMPT}]
     if medical_context:
         messages.append({"role": "system", "content": medical_context})
     messages.append({"role": "user", "content": corrected_query})
@@ -286,10 +282,13 @@ async def infer_medical_stream(request: InferRequest):
                         if not line.strip():
                             continue
                         chunk = json.loads(line)
-                        token = chunk.get("message", {}).get("content", "")
-                        if token:
-                            data = json.dumps({"token": token}, ensure_ascii=False)
-                            yield f"data: {data}\n\n"
+                        raw_token = chunk.get("message", {}).get("content", "")
+                        if raw_token:
+                            # 중국어/일본어 문자 실시간 제거
+                            token = NON_KOREAN_CJK_PATTERN.sub("", raw_token)
+                            if token:
+                                data = json.dumps({"token": token}, ensure_ascii=False)
+                                yield f"data: {data}\n\n"
                         if chunk.get("done", False):
                             yield "data: [DONE]\n\n"
         except Exception as exc:
