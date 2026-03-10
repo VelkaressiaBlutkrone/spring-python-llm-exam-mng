@@ -1,11 +1,11 @@
 package com.sample.llm.controller;
 
-import com.sample.llm.dto.ChatHistoryResponse;
+import com.sample.llm.dto.ChatbotHistoryResponse;
 import com.sample.llm.dto.DoctorWithScheduleDto;
 import com.sample.llm.dto.LlmRequest;
 import com.sample.llm.dto.MedicalLlmResponse;
-import com.sample.llm.entity.ChatHistory;
-import com.sample.llm.repository.ChatHistoryRepository;
+import com.sample.llm.entity.ChatbotHistory;
+import com.sample.llm.repository.ChatbotHistoryRepository;
 import com.sample.llm.service.DoctorService;
 import com.sample.llm.service.LlmResponseParser;
 import com.sample.llm.service.LlmService;
@@ -32,7 +32,7 @@ import reactor.core.publisher.Mono;
 public class LlmController {
 
 	private final LlmService llmService;
-	private final ChatHistoryRepository chatHistoryRepository;
+	private final ChatbotHistoryRepository chatbotHistoryRepository;
 	private final DoctorService doctorService;
 	private final LlmResponseParser llmResponseParser;
 
@@ -49,8 +49,8 @@ public class LlmController {
 
 		log.debug("LLM 쿼리 수신 - query: {}, userId: {}", request.getQuery(), userId);
 
-		// (DB 저장 1) PENDING 상태로 저장 (userId가 있으면 User 연결)
-		ChatHistory history = llmService.savePending(request.getQuery(), userId);
+		// (DB 저장 1) PENDING 상태로 저장 (staffId가 있으면 Staff 연결, X-User-Id는 staffId로 사용)
+		ChatbotHistory history = llmService.savePending(request.getQuery(), userId);
 		long startTime = System.currentTimeMillis();
 
 		// (API 호출) LLM 비동기 호출 → (DB 저장 2) 결과에 따라 상태 업데이트
@@ -79,7 +79,7 @@ public class LlmController {
 
 		log.debug("Medical LLM 쿼리 수신 - query: {}, userId: {}", request.getQuery(), userId);
 
-		ChatHistory history = llmService.savePending(request.getQuery(), userId);
+		ChatbotHistory history = llmService.savePending(request.getQuery(), userId);
 		long startTime = System.currentTimeMillis();
 
 		return llmService.callMedicalLlmApi(request.getQuery())
@@ -108,7 +108,7 @@ public class LlmController {
 
 		log.debug("Medical+Doctor 쿼리 수신 - query: {}, userId: {}", request.getQuery(), userId);
 
-		ChatHistory history = llmService.savePending(request.getQuery(), userId);
+		ChatbotHistory history = llmService.savePending(request.getQuery(), userId);
 		long startTime = System.currentTimeMillis();
 
 		return llmService.callMedicalLlmApi(request.getQuery())
@@ -150,17 +150,17 @@ public class LlmController {
 	}
 
 	/**
-	 * GET /api/llm/history/{userId}
+	 * GET /api/llm/history/{staffId}
 	 * Step 9: 특정 사용자의 챗 히스토리를 페이징으로 조회합니다.
 	 */
-	@GetMapping("/history/{userId}")
-	public Page<ChatHistoryResponse> getHistory(
-			@PathVariable Long userId,
+	@GetMapping("/history/{staffId}")
+	public Page<ChatbotHistoryResponse> getHistory(
+			@PathVariable Long staffId,
 			@PageableDefault(size = 20) Pageable pageable) {
 
-		log.debug("히스토리 조회 - userId: {}, page: {}", userId, pageable.getPageNumber());
+		log.debug("히스토리 조회 - staffId: {}, page: {}", staffId, pageable.getPageNumber());
 
-		return chatHistoryRepository.findByUser_IdOrderByTimestampDesc(userId, pageable)
-				.map(ChatHistoryResponse::from);
+		return chatbotHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(staffId, pageable)
+				.map(ChatbotHistoryResponse::from);
 	}
 }

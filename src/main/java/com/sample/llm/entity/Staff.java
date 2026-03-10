@@ -10,12 +10,16 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * ERD v4.0 STAFF 테이블 매핑.
+ * 병원 내부 직원(로그인 계정). CHATBOT_HISTORY의 staff_id FK 참조.
+ */
 @Entity
-@Table(name = "users")
+@Table(name = "staff")
 @Getter
 @Setter
 @NoArgsConstructor
-public class User {
+public class Staff {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -24,10 +28,13 @@ public class User {
 	@Column(nullable = false, length = 100)
 	private String username;
 
+	@Column(name = "employee_number", length = 20, unique = true)
+	private String employeeNumber;
+
 	@Column(nullable = false, length = 255)
 	private String email;
 
-	public User(String username, String email) {
+	public Staff(String username, String email) {
 		this.username = username;
 		this.email = email;
 	}

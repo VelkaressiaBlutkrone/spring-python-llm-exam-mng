@@ -236,9 +236,9 @@ curl -X POST http://localhost:8080/api/llm/query \
 
 ### 챗 히스토리 조회
 
-**`GET /api/llm/history/{userId}`**
+**`GET /api/llm/history/{staffId}`**
 
-특정 사용자의 챗 히스토리를 페이징으로 조회합니다.
+특정 직원(Staff)의 챗봇 대화 이력을 페이징으로 조회합니다. (ERD v4.0 CHATBOT_HISTORY 정합)
 
 ```bash
 # 기본 조회 (최신순 20건)
@@ -256,11 +256,11 @@ curl "http://localhost:8080/api/llm/history/1?page=0&size=10"
     {
       "id": 1,
       "sessionId": "abc-123",
-      "query": "안녕하세요, 오늘 날씨는?",
-      "response": "안녕하세요! 오늘 날씨에 대해...",
+      "question": "안녕하세요, 오늘 날씨는?",
+      "answer": "안녕하세요! 오늘 날씨에 대해...",
       "status": "COMPLETED",
       "metadata": "{\"model\":\"gpt2\",\"latency_ms\":1250}",
-      "timestamp": "2025-03-01T12:00:00"
+      "createdAt": "2025-03-01T12:00:00"
     }
   ],
   "totalElements": 1,
