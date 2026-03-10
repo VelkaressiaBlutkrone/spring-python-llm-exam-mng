@@ -1,12 +1,12 @@
 package com.sample.llm.service;
 
 import com.sample.llm.dto.LlmResponse;
-import com.sample.llm.entity.ChatHistory;
-import com.sample.llm.entity.User;
+import com.sample.llm.entity.ChatbotHistory;
+import com.sample.llm.entity.Staff;
 import com.sample.llm.exception.LlmServiceUnavailableException;
 import com.sample.llm.exception.LlmTimeoutException;
-import com.sample.llm.repository.ChatHistoryRepository;
-import com.sample.llm.repository.UserRepository;
+import com.sample.llm.repository.ChatbotHistoryRepository;
+import com.sample.llm.repository.StaffRepository;
 import io.netty.channel.ConnectTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,8 +30,8 @@ import java.util.concurrent.TimeoutException;
 public class LlmService {
 
 	private final WebClient llmWebClient;
-	private final ChatHistoryRepository chatHistoryRepository;
-	private final UserRepository userRepository;
+	private final ChatbotHistoryRepository chatbotHistoryRepository;
+	private final StaffRepository staffRepository;
 	private final ObjectMapper objectMapper;
 
 	/**
@@ -112,49 +112,47 @@ public class LlmService {
 	}
 
 	/**
-	 * ChatHistory를 PENDING 상태로 저장합니다.
-	 * Step 7: userId가 있으면 User를 조회하여 연결합니다.
-	 * RULE_SPRING.md: @Transactional 적용, status 필수 저장
+	 * ChatbotHistory를 PENDING 상태로 저장합니다.
+	 * staffId가 있으면 Staff를 조회하여 연결합니다. (ERD: CHATBOT_HISTORY.staff_id)
 	 */
 	@Transactional
-	public ChatHistory savePending(String query, Long userId) {
-		ChatHistory history = new ChatHistory(query, "PENDING");
+	public ChatbotHistory savePending(String query, Long staffId) {
+		ChatbotHistory history = new ChatbotHistory(query, "PENDING");
 
-		if (userId != null) {
-			userRepository.findById(userId).ifPresent(history::setUser);
+		if (staffId != null) {
+			staffRepository.findById(staffId).ifPresent(history::setStaff);
 		}
 
-		ChatHistory saved = chatHistoryRepository.save(history);
-		log.debug("ChatHistory PENDING 저장 - id: {}, userId: {}", saved.getId(), userId);
+		ChatbotHistory saved = chatbotHistoryRepository.save(history);
+		log.debug("ChatbotHistory PENDING 저장 - id: {}, staffId: {}", saved.getId(), staffId);
 		return saved;
 	}
 
 	/**
-	 * ChatHistory를 COMPLETED 상태로 업데이트합니다.
-	 * Step 7: metadata에 model, latency_ms 등 성능 정보를 저장합니다.
+	 * ChatbotHistory를 COMPLETED 상태로 업데이트합니다.
+	 * metadata에 model, latency_ms 등 성능 정보를 저장합니다.
 	 */
 	@Transactional
-	public void updateCompleted(Long historyId, String response, long latencyMs) {
-		chatHistoryRepository.findById(historyId).ifPresent(history -> {
-			history.setResponse(response);
+	public void updateCompleted(Long historyId, String answer, long latencyMs) {
+		chatbotHistoryRepository.findById(historyId).ifPresent(history -> {
+			history.setAnswer(answer);
 			history.setStatus("COMPLETED");
 			history.setMetadata(buildMetadata(latencyMs));
-			chatHistoryRepository.save(history);
-			log.debug("ChatHistory COMPLETED 업데이트 - id: {}, latency: {}ms", historyId, latencyMs);
+			chatbotHistoryRepository.save(history);
+			log.debug("ChatbotHistory COMPLETED 업데이트 - id: {}, latency: {}ms", historyId, latencyMs);
 		});
 	}
 
 	/**
-	 * ChatHistory를 FAILED 상태로 업데이트합니다.
-	 * Step 7: doOnError에서 호출되어 실패 사유를 기록합니다.
+	 * ChatbotHistory를 FAILED 상태로 업데이트합니다.
 	 */
 	@Transactional
 	public void updateFailed(Long historyId, String errorMessage) {
-		chatHistoryRepository.findById(historyId).ifPresent(history -> {
+		chatbotHistoryRepository.findById(historyId).ifPresent(history -> {
 			history.setStatus("FAILED");
 			history.setMetadata(buildErrorMetadata(errorMessage));
-			chatHistoryRepository.save(history);
-			log.warn("ChatHistory FAILED 업데이트 - id: {}, error: {}", historyId, errorMessage);
+			chatbotHistoryRepository.save(history);
+			log.warn("ChatbotHistory FAILED 업데이트 - id: {}, error: {}", historyId, errorMessage);
 		});
 	}
 

@@ -2,10 +2,10 @@ package com.sample.llm.controller;
 
 import com.sample.llm.dto.DoctorScheduleDto;
 import com.sample.llm.dto.DoctorWithScheduleDto;
-import com.sample.llm.entity.ChatHistory;
+import com.sample.llm.entity.ChatbotHistory;
 import com.sample.llm.exception.LlmServiceUnavailableException;
 import com.sample.llm.exception.LlmTimeoutException;
-import com.sample.llm.repository.ChatHistoryRepository;
+import com.sample.llm.repository.ChatbotHistoryRepository;
 import com.sample.llm.service.DoctorService;
 import com.sample.llm.service.LlmResponseParser;
 import com.sample.llm.service.LlmService;
@@ -52,7 +52,7 @@ class LlmControllerTest {
 	private LlmService llmService;
 
 	@MockitoBean
-	private ChatHistoryRepository chatHistoryRepository;
+	private ChatbotHistoryRepository chatbotHistoryRepository;
 
 	@MockitoBean
 	private DoctorService doctorService;
@@ -68,7 +68,7 @@ class LlmControllerTest {
 	@DisplayName("POST /api/llm/query - 정상 응답")
 	void handleQuery_success() throws Exception {
 		// given
-		ChatHistory pendingHistory = new ChatHistory("안녕하세요", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("안녕하세요", "PENDING");
 		pendingHistory.setId(1L);
 
 		when(llmService.savePending(eq("안녕하세요"), any()))
@@ -96,7 +96,7 @@ class LlmControllerTest {
 	@DisplayName("POST /api/llm/query - X-User-Id 헤더 포함")
 	void handleQuery_withUserId() throws Exception {
 		// given
-		ChatHistory pendingHistory = new ChatHistory("테스트 쿼리", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("테스트 쿼리", "PENDING");
 		pendingHistory.setId(2L);
 
 		when(llmService.savePending(eq("테스트 쿼리"), eq(42L)))
@@ -124,7 +124,7 @@ class LlmControllerTest {
 	@DisplayName("POST /api/llm/query - LLM 서버 연결 실패 시 503")
 	void handleQuery_serviceUnavailable() throws Exception {
 		// given
-		ChatHistory pendingHistory = new ChatHistory("실패 쿼리", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("실패 쿼리", "PENDING");
 		pendingHistory.setId(3L);
 
 		when(llmService.savePending(eq("실패 쿼리"), any()))
@@ -150,7 +150,7 @@ class LlmControllerTest {
 	@DisplayName("POST /api/llm/query - LLM 서버 타임아웃 시 504")
 	void handleQuery_timeout() throws Exception {
 		// given
-		ChatHistory pendingHistory = new ChatHistory("타임아웃 쿼리", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("타임아웃 쿼리", "PENDING");
 		pendingHistory.setId(4L);
 
 		when(llmService.savePending(eq("타임아웃 쿼리"), any()))
@@ -180,7 +180,7 @@ class LlmControllerTest {
 	@DisplayName("POST /api/llm/medical-query - 정상 응답")
 	void handleMedicalQuery_success() throws Exception {
 		// given
-		ChatHistory pendingHistory = new ChatHistory("두통이 심한데 어느 과로 가야 하나요?", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("두통이 심한데 어느 과로 가야 하나요?", "PENDING");
 		pendingHistory.setId(10L);
 
 		when(llmService.savePending(eq("두통이 심한데 어느 과로 가야 하나요?"), any()))
@@ -208,7 +208,7 @@ class LlmControllerTest {
 	@DisplayName("POST /api/llm/medical-query - LLM 서버 연결 실패 시 503")
 	void handleMedicalQuery_serviceUnavailable() throws Exception {
 		// given
-		ChatHistory pendingHistory = new ChatHistory("의학 질문", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("의학 질문", "PENDING");
 		pendingHistory.setId(11L);
 
 		when(llmService.savePending(eq("의학 질문"), any()))
@@ -234,7 +234,7 @@ class LlmControllerTest {
 	@DisplayName("POST /api/llm/medical-query - LLM 타임아웃 시 504")
 	void handleMedicalQuery_timeout() throws Exception {
 		// given
-		ChatHistory pendingHistory = new ChatHistory("타임아웃 의학 질문", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("타임아웃 의학 질문", "PENDING");
 		pendingHistory.setId(12L);
 
 		when(llmService.savePending(eq("타임아웃 의학 질문"), any()))
@@ -264,27 +264,27 @@ class LlmControllerTest {
 	@DisplayName("GET /api/llm/history/{userId} - 히스토리 페이징 조회")
 	void getHistory_success() throws Exception {
 		// given
-		ChatHistory history1 = new ChatHistory("첫 번째 질문", "COMPLETED");
+		ChatbotHistory history1 = new ChatbotHistory("첫 번째 질문", "COMPLETED");
 		history1.setId(1L);
 		history1.setSessionId("session-001");
-		history1.setResponse("첫 번째 응답");
+		history1.setAnswer("첫 번째 응답");
 		history1.setMetadata("{\"model\":\"gpt2\",\"latency_ms\":150}");
-		history1.setTimestamp(LocalDateTime.of(2025, 1, 15, 10, 30, 0));
+		history1.setCreatedAt(LocalDateTime.of(2025, 1, 15, 10, 30, 0));
 
-		ChatHistory history2 = new ChatHistory("두 번째 질문", "COMPLETED");
+		ChatbotHistory history2 = new ChatbotHistory("두 번째 질문", "COMPLETED");
 		history2.setId(2L);
 		history2.setSessionId("session-002");
-		history2.setResponse("두 번째 응답");
+		history2.setAnswer("두 번째 응답");
 		history2.setMetadata("{\"model\":\"gpt2\",\"latency_ms\":200}");
-		history2.setTimestamp(LocalDateTime.of(2025, 1, 15, 11, 0, 0));
+		history2.setCreatedAt(LocalDateTime.of(2025, 1, 15, 11, 0, 0));
 
-		Page<ChatHistory> page = new PageImpl<>(
+		Page<ChatbotHistory> page = new PageImpl<>(
 				List.of(history2, history1),
 				PageRequest.of(0, 20),
 				2
 		);
 
-		when(chatHistoryRepository.findByUser_IdOrderByTimestampDesc(eq(1L), any()))
+		when(chatbotHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(eq(1L), any()))
 				.thenReturn(page);
 
 		// when & then (동기 응답 - asyncDispatch 불필요)
@@ -295,8 +295,8 @@ class LlmControllerTest {
 				.andExpect(jsonPath("$.content").isArray())
 				.andExpect(jsonPath("$.content.length()").value(2))
 				.andExpect(jsonPath("$.content[0].id").value(2))
-				.andExpect(jsonPath("$.content[0].query").value("두 번째 질문"))
-				.andExpect(jsonPath("$.content[0].response").value("두 번째 응답"))
+				.andExpect(jsonPath("$.content[0].question").value("두 번째 질문"))
+				.andExpect(jsonPath("$.content[0].answer").value("두 번째 응답"))
 				.andExpect(jsonPath("$.content[0].status").value("COMPLETED"))
 				.andExpect(jsonPath("$.totalElements").value(2))
 				.andExpect(jsonPath("$.totalPages").value(1));
@@ -306,13 +306,13 @@ class LlmControllerTest {
 	@DisplayName("GET /api/llm/history/{userId} - 빈 히스토리")
 	void getHistory_empty() throws Exception {
 		// given
-		Page<ChatHistory> emptyPage = new PageImpl<>(
+		Page<ChatbotHistory> emptyPage = new PageImpl<>(
 				List.of(),
 				PageRequest.of(0, 20),
 				0
 		);
 
-		when(chatHistoryRepository.findByUser_IdOrderByTimestampDesc(eq(999L), any()))
+		when(chatbotHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(eq(999L), any()))
 				.thenReturn(emptyPage);
 
 		// when & then
@@ -333,7 +333,7 @@ class LlmControllerTest {
 		// given
 		String llmResponse = "**추천 진료과**: 정형외과\n\n무릎 통증은 관절 문제를 의심할 수 있습니다.";
 
-		ChatHistory pendingHistory = new ChatHistory("무릎이 아파요", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("무릎이 아파요", "PENDING");
 		pendingHistory.setId(20L);
 
 		when(llmService.savePending(eq("무릎이 아파요"), any()))
@@ -377,7 +377,7 @@ class LlmControllerTest {
 		// given
 		String llmResponse = "일반적인 건강 상담 답변입니다.";
 
-		ChatHistory pendingHistory = new ChatHistory("건강 상담", "PENDING");
+		ChatbotHistory pendingHistory = new ChatbotHistory("건강 상담", "PENDING");
 		pendingHistory.setId(21L);
 
 		when(llmService.savePending(eq("건강 상담"), any()))

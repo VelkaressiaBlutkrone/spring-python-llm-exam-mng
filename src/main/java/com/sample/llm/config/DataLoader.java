@@ -3,11 +3,11 @@ package com.sample.llm.config;
 import com.sample.llm.entity.Doctor;
 import com.sample.llm.entity.DoctorSchedule;
 import com.sample.llm.entity.MedicalDomain;
-import com.sample.llm.entity.User;
+import com.sample.llm.entity.Staff;
 import com.sample.llm.repository.DoctorRepository;
 import com.sample.llm.repository.DoctorScheduleRepository;
 import com.sample.llm.repository.MedicalDomainRepository;
-import com.sample.llm.repository.UserRepository;
+import com.sample.llm.repository.StaffRepository;
 
 import java.time.LocalTime;
 import lombok.RequiredArgsConstructor;
@@ -23,16 +23,16 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class DataLoader implements ApplicationRunner {
 
-	private final UserRepository userRepository;
+	private final StaffRepository staffRepository;
 	private final DoctorRepository doctorRepository;
 	private final DoctorScheduleRepository doctorScheduleRepository;
 	private final MedicalDomainRepository medicalDomainRepository;
 
 	@Override
 	public void run(ApplicationArguments args) {
-		if (userRepository.count() == 0) {
-			userRepository.save(new User("default", "default@example.com"));
-			log.info("초기 사용자 시드 데이터 생성 완료");
+		if (staffRepository.count() == 0) {
+			staffRepository.save(new Staff("default", "default@example.com"));
+			log.info("초기 직원(Staff) 시드 데이터 생성 완료");
 		}
 
 		if (doctorRepository.count() == 0) {

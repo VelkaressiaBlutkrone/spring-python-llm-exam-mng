@@ -1,6 +1,6 @@
 package com.sample.llm.dto;
 
-import com.sample.llm.entity.ChatHistory;
+import com.sample.llm.entity.ChatbotHistory;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -8,25 +8,25 @@ import java.time.LocalDateTime;
 
 @Getter
 @AllArgsConstructor
-public class ChatHistoryResponse {
+public class ChatbotHistoryResponse {
 
 	private Long id;
 	private String sessionId;
-	private String query;
-	private String response;
+	private String question;
+	private String answer;
 	private String status;
 	private String metadata;
-	private LocalDateTime timestamp;
+	private LocalDateTime createdAt;
 
-	public static ChatHistoryResponse from(ChatHistory entity) {
-		return new ChatHistoryResponse(
+	public static ChatbotHistoryResponse from(ChatbotHistory entity) {
+		return new ChatbotHistoryResponse(
 				entity.getId(),
 				entity.getSessionId(),
-				entity.getQuery(),
-				entity.getResponse(),
+				entity.getQuestion(),
+				entity.getAnswer(),
 				entity.getStatus(),
 				entity.getMetadata(),
-				entity.getTimestamp()
+				entity.getCreatedAt()
 		);
 	}
 }
