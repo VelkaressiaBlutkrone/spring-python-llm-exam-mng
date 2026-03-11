@@ -18,5 +18,21 @@ services:
       timeout: 5s
       retries: 5
 
+  chromadb:
+    image: chromadb/chroma:1.5.4
+    container_name: llm-chromadb
+    ports:
+      - "8100:8000"
+    volumes:
+      - llm_chroma_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   llm_mysql_data:
+  llm_chroma_data:

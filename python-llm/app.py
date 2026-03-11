@@ -30,35 +30,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """앱 시작/종료 시 리소스 관리"""
-    # startup
-    await get_pool()
-    logger.info("MySQL connection pool initialized")
-
+    """앱 시작/종료 시 리소스 관리 (lazy initialization)"""
+    # startup — MySQL과 ChromaDB 모두 lazy init (첫 요청 시 연결)
     settings = get_settings()
-    if settings.use_vector_search:
-        try:
-            from vector_store import get_collection
-            collection = get_collection()
-            doc_count = collection.count()
-            logger.info("ChromaDB medical ready: %d documents indexed", doc_count)
-            if doc_count == 0:
-                logger.warning(
-                    "ChromaDB is empty. Run indexing BEFORE starting the server:\n"
-                    "  python index_medical_data.py\n"
-                    "  python index_rule_data.py\n"
-                    "WARNING: Never run index scripts while the server is running "
-                    "(ChromaDB SQLite corruption risk on Windows)"
-                )
-        except Exception as exc:
-            logger.warning("ChromaDB medical initialization failed: %s", exc)
-            logger.warning(
-                "If ChromaDB is corrupted, stop the server, "
-                "delete chroma_data/ directory, re-run index scripts, "
-                "then restart the server."
-            )
-
-        logger.info("Rule vector search will initialize on first request")
+    logger.info("Server starting (MySQL: %s:%d, ChromaDB: %s:%d, vector_search: %s)",
+                settings.mysql_host, settings.mysql_port,
+                settings.chroma_host, settings.chroma_port,
+                settings.use_vector_search)
 
     yield
 
