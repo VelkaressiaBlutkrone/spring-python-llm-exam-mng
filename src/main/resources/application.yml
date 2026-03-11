@@ -20,7 +20,7 @@ llm:
     url: ${LLM_SERVICE_URL:http://localhost:8000}
     timeout:
       connect: 5000   # ms
-      read: 60000     # ms (LLM 추론 시간 고려)
+      read: 120000    # ms (LLM 추론 시간 고려, Ollama 7B 모델 기준)
 
 spring.mvc:
   async:
