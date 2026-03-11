@@ -347,6 +347,11 @@
                 // 빈 줄 정리
                 text = text.replace(/^\s*\n+/, '');
                 text = text.replace(/\n{3,}/g, '\n\n');
+                // 번호 매기기 재정렬 (2,3,4... → 1,2,3...)
+                let num = 1;
+                text = text.replace(/^(\d+)\.\s/gm, function() {
+                    return (num++) + '. ';
+                });
             }
             document.getElementById('llmResponse').innerHTML = renderMarkdown(text);
         }
