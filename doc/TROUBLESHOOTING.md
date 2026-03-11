@@ -64,6 +64,13 @@
     - [원인 (복합적)](#원인-복합적)
     - [해결](#해결-8)
     - [교훈](#교훈-10)
+  - [12. MySQL 커넥션 풀 Startup Hang (aiomysql)](#12-mysql-커넥션-풀-startup-hang-aiomysql)
+  - [13. ChromaDB Windows Segfault (PersistentClient)](#13-chromadb-windows-segfault-persistentclient)
+  - [14. ChromaDB API 버전 불일치 (KeyError: '_type')](#14-chromadb-api-버전-불일치-keyerror-_type)
+  - [15. LLM 응답 중국어 구두점 반복 및 문장 잘림](#15-llm-응답-중국어-구두점-반복-및-문장-잘림)
+  - [16. Windows localhost IPv6 해석으로 MySQL 연결 실패](#16-windows-localhost-ipv6-해석으로-mysql-연결-실패)
+  - [17. Docker Desktop WSL2 외부 IP 접속 불가](#17-docker-desktop-wsl2-외부-ip-접속-불가)
+  - [18. Docker 데이터 C 드라이브 용량 부족](#18-docker-데이터-c-드라이브-용량-부족)
   - [부록: 개발 환경 관련 이슈](#부록-개발-환경-관련-이슈)
     - [Windows CRLF + Tab 들여쓰기](#windows-crlf--tab-들여쓰기)
     - [.gitignore 누락](#gitignore-누락)
@@ -438,6 +445,225 @@ USE_VECTOR_SEARCH=False uvicorn app:app --port 8000
 - 벡터 검색은 **인덱싱 선행 작업**이 필요하므로 서버 시작 시 상태를 로그로 알려야 함
 - 벡터 검색 실패는 서비스 중단이 아닌 **graceful degradation** (FULLTEXT 폴백)으로 처리
 - 설정 플래그(`use_vector_search`)로 즉시 비활성화 가능하게 하여 운영 안정성 확보
+
+---
+
+## 12. MySQL 커넥션 풀 Startup Hang (aiomysql)
+
+### 증상
+- Python FastAPI 서버 시작 시 42초 이상 hang 발생
+- `lifespan` 이벤트에서 MySQL 커넥션 풀 생성 시 블로킹
+
+### 원인
+- `aiomysql.create_pool(minsize=2)` 설정으로 서버 시작 시 즉시 2개의 커넥션을 생성하려 함
+- Docker MySQL이 완전히 준비되기 전에 연결 시도 → 타임아웃 대기
+
+### 해결
+```python
+# 변경 전
+_pool = await aiomysql.create_pool(..., minsize=2, maxsize=10)
+
+# 변경 후: lazy init (첫 요청 시 커넥션 생성)
+_pool = await aiomysql.create_pool(..., minsize=0, maxsize=10, connect_timeout=10)
+```
+- `minsize=0`: 시작 시 커넥션을 미리 만들지 않음
+- `connect_timeout=10`: 무한 대기 방지
+
+### 교훈
+- Docker 환경에서는 DB가 healthy 상태여도 실제 연결 가능까지 시간차가 있음
+- 서버 시작 시 DB 커넥션을 lazy하게 생성하면 기동 속도 개선
+
+---
+
+## 13. ChromaDB Windows Segfault (PersistentClient)
+
+### 증상
+- `python index_medical_data.py` 실행 시 `exit code 139` (segfault) 발생
+- Windows 환경에서 ChromaDB `PersistentClient.upsert()` 호출 시 크래시
+
+### 원인
+- ChromaDB의 `PersistentClient`가 Windows에서 SQLite/hnswlib 네이티브 라이브러리 충돌
+- 특히 대량 문서 upsert 시 메모리 관련 segfault 발생
+
+### 해결
+- ChromaDB를 Docker 컨테이너로 분리하고 `HttpClient`로 전환
+
+```yaml
+# docker-compose.yml
+chromadb:
+  image: chromadb/chroma:1.5.4
+  ports:
+    - "8100:8000"
+```
+
+```python
+# vector_store.py
+# 변경 전
+_client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+
+# 변경 후
+_client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
+```
+
+### 교훈
+- ChromaDB PersistentClient는 Linux에서는 안정적이나 Windows에서 segfault 가능성 있음
+- Docker HttpClient 방식이 플랫폼 독립적이고 안정적
+
+---
+
+## 14. ChromaDB API 버전 불일치 (KeyError: '_type')
+
+### 증상
+- ChromaDB HttpClient 연결 시 `KeyError('_type')` 에러 발생
+- 인덱싱/검색 모두 실패
+
+### 원인
+- Python `chromadb` 패키지 버전(1.5.4)과 Docker 이미지 버전(0.6.3) 불일치
+- API 스키마가 다르기 때문에 응답 파싱 실패
+
+### 해결
+- Docker 이미지 버전을 Python 패키지와 일치시킴
+
+```yaml
+# docker-compose.yml
+chromadb:
+  image: chromadb/chroma:1.5.4  # python chromadb==1.5.4 와 동일 버전
+```
+
+### 교훈
+- ChromaDB 클라이언트와 서버 버전은 반드시 일치시켜야 함
+- `pip show chromadb`로 클라이언트 버전 확인 후 Docker 이미지 태그 맞출 것
+
+---
+
+## 15. LLM 응답 중국어 구두점 반복 및 문장 잘림
+
+### 증상
+- 의학 질의 응답에 `，。，。` 같은 중국어 구두점이 반복적으로 붙음
+- 원래 문장이 잘려서 완전한 문장으로 출력되지 않음
+
+### 원인
+1. **구두점 반복**: qwen2.5:7b 모델이 중국어 구두점 패턴에 빠져 무한 반복 생성
+2. **문장 잘림**: `max_length` 기본값이 100으로 너무 낮아 한국어 응답이 중간에 잘림
+
+### 해결
+
+**A. Stop sequences 추가**
+```python
+# 중국어 구두점 반복 패턴 감지 시 생성 중단
+stop_sequences = ["，。，", "。，。"]
+```
+
+**B. response_cleaner 강화**
+```python
+# 중국어 구두점 연속 2개 이상 제거 (CJK 제거 전에 수행)
+cleaned = re.sub(r"[，。、；：！？]{2,}", "", cleaned)
+```
+
+**C. max_length 기본값 증가**
+```python
+# schemas.py
+max_length: int = Field(default=512, ...)  # 100 → 512
+```
+
+**D. 불완전 문장 마무리 기준 완화**
+```python
+# response_cleaner.py - _trim_incomplete_ending()
+# 한국어 종결어미 패턴: 다, 요, 음, 니 등
+# 완성 문장 비율 임계값: 70% → 50%
+```
+
+### 교훈
+- multilingual 모델은 원치 않는 언어의 구두점도 생성할 수 있음 → stop sequences로 조기 중단
+- 한국어는 영어보다 토큰 효율이 낮아 max_length를 넉넉하게 설정해야 함
+
+---
+
+## 16. Windows localhost IPv6 해석으로 MySQL 연결 실패
+
+### 증상
+- Python 서버에서 MySQL 연결 시 `OperationalError(2003, "Can't connect to MySQL server on 'localhost'")` 발생
+- Docker MySQL 컨테이너는 healthy 상태이고 `docker exec`로는 정상 접속 가능
+
+### 원인
+- Windows에서 `localhost`가 IPv6 `::1`로 해석됨
+- Docker는 IPv4 `0.0.0.0:3307`으로만 포트 바인딩
+- `aiomysql`이 `::1:3307`로 연결 시도 → 타임아웃
+
+### 해결
+```python
+# config.py
+# 변경 전
+mysql_host: str = Field(default="localhost", ...)
+
+# 변경 후
+mysql_host: str = Field(default="127.0.0.1", ...)
+```
+
+### 검증
+```python
+# localhost → 실패
+await aiomysql.create_pool(host='localhost', port=3307, ...)  # TimeoutError
+
+# 127.0.0.1 → 성공
+await aiomysql.create_pool(host='127.0.0.1', port=3307, ...)  # OK
+```
+
+### 교훈
+- Windows에서 Docker 컨테이너에 연결 시 `localhost` 대신 `127.0.0.1`을 명시적으로 사용
+- IPv6/IPv4 듀얼 스택 환경에서 `localhost` 해석은 OS마다 다를 수 있음
+
+---
+
+## 17. Docker Desktop WSL2 외부 IP 접속 불가
+
+### 증상
+- `docker compose up` 후 `localhost:8080`은 정상 접속
+- 같은 PC에서 LAN IP(`192.168.0.73:8080`)로 접속하면 타임아웃
+- 다른 기기에서 `192.168.0.73:8080`은 정상 접속 가능
+
+### 원인
+- Docker Desktop WSL2 백엔드의 알려진 제한사항
+- WSL2는 localhost 포트 포워딩만 지원하며, 호스트의 LAN IP를 통한 루프백 접속은 지원하지 않음
+- `netsh interface portproxy`도 WSL2 환경에서는 동작하지 않음
+
+### 해결
+
+**방법 1: 같은 PC에서는 localhost 사용**
+- 이 PC: `http://localhost:8080/`
+- 다른 기기: `http://192.168.0.73:8080/`
+
+**방법 2: Docker Desktop Hyper-V 백엔드 전환**
+- Docker Desktop → Settings → General → "Use the WSL 2 based engine" 체크 해제
+- Hyper-V 모드에서는 LAN IP 접속 가능
+
+**방법 3: Windows 방화벽 포트 허용 (외부 기기 접속용)**
+```powershell
+# 관리자 PowerShell
+netsh advfirewall firewall add rule name="Docker-8080" dir=in action=allow protocol=TCP localport=8080
+```
+
+### 교훈
+- Docker Desktop WSL2는 localhost 전용, 외부 접속은 방화벽 규칙 필요
+- 같은 PC에서 자기 LAN IP로 접속이 안 되는 것은 WSL2의 네트워킹 한계
+- 외부 기기 접속이 목적이라면 방화벽 허용만으로 충분
+
+---
+
+## 18. Docker 데이터 C 드라이브 용량 부족
+
+### 증상
+- Docker 이미지/컨테이너가 C 드라이브에 저장되어 디스크 용량 부족
+- `C:\Users\<user>\AppData\Local\Docker\wsl\` 경로에 약 33GB 사용
+
+### 해결
+- Docker Desktop → Settings → Resources → Advanced → **Disk image location**
+- 경로를 `D:\DockerData` 등으로 변경 → Apply & Restart
+- Docker Desktop이 자동으로 기존 데이터를 새 경로로 이동
+
+### 교훈
+- Docker Desktop 설치 후 초기에 데이터 경로를 여유 있는 드라이브로 설정하는 것을 권장
+- 수동 WSL export/import 방식보다 Docker Desktop 설정 변경이 안전하고 간편
 
 ---
 

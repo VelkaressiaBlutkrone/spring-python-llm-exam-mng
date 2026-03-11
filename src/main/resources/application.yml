@@ -27,6 +27,7 @@ spring.mvc:
     request-timeout: 120000  # ms (LLM 추론 대기 2분)
 
 server:
+  address: 0.0.0.0
   port: ${SERVER_PORT:8080}
 
 logging:
