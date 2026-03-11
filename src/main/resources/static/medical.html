@@ -246,7 +246,10 @@
             try {
                 const data = await doctorPromise;
                 renderDoctorCards(data);
-                if (!streamedText) {
+                if (streamedText) {
+                    // 스트리밍 완료 후 추천 진료과 정보를 AI 응답에서 제거
+                    cleanStreamedResponse(data);
+                } else {
                     renderLlmResponse(data);
                 }
             } catch (error) {
@@ -333,6 +336,23 @@
             return fullText;
         }
 
+        function cleanStreamedResponse(data) {
+            const el = document.getElementById('llmResponse');
+            let text = el.textContent || '';
+            if (data.recommendedDepartment) {
+                // 추천 진료과 관련 라인 제거 (AI 응답에서 중복 방지)
+                text = text.replace(/\*{0,2}추천\s*진료과\s*\*{0,2}\s*[:：]?\s*\*{0,2}[^\n]*\*{0,2}\s*\n*/gi, '');
+                text = text.replace(/\*{0,2}추천\s*진료과\*{0,2}\s*\n+/gi, '');
+                text = text.replace(new RegExp('\\*{0,2}' + escapeRegExp(data.recommendedDepartment) + '\\*{0,2}\\s*[（(][^)）]*[)）]\\s*[.。]?\\s*', 'g'), '');
+                text = text.replace(/^\s*\n+/, '');
+            }
+            el.innerHTML = renderMarkdown(text);
+        }
+
+        function escapeRegExp(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
         function renderDoctorCards(data) {
             document.getElementById('resultSection').classList.add('active');
 
@@ -340,7 +360,7 @@
             if (data.recommendedDepartment) {
                 deptCard.style.display = 'block';
                 document.getElementById('departmentBadge').textContent = data.recommendedDepartment;
-                document.getElementById('reasonText').textContent = data.recommendationReason || '';
+                document.getElementById('reasonText').textContent = '';
             } else {
                 deptCard.style.display = 'none';
             }
