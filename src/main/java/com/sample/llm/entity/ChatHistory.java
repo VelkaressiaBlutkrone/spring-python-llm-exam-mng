@@ -17,45 +17,41 @@ import java.time.LocalDateTime;
 
 /**
  * ERD v4.0 CHATBOT_HISTORY 테이블 매핑.
- * 챗봇 대화 이력. question/answer/created_at은 ERD 명칭.
- * status, metadata는 확장 컬럼(LLM 처리 상태 추적).
+ * 병원 규칙 Q&A 챗봇 대화 이력.
+ * 의사·간호사가 병원 내부 규칙(당직, 물품, 위생 등)에 대해 질의응답할 때 사용합니다.
  */
 @Entity
 @Table(name = "chatbot_history")
 @Getter
 @Setter
 @NoArgsConstructor
-public class ChatbotHistory {
+public class ChatHistory {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
 	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "staff_id")
+	@JoinColumn(name = "staff_id", nullable = false)
 	private Staff staff;
 
-	@Column(name = "session_id", length = 100)
+	@Column(name = "session_id", nullable = false, length = 100)
 	private String sessionId;
 
 	@Column(nullable = false, columnDefinition = "TEXT")
 	private String question;
 
-	@Column(columnDefinition = "TEXT")
+	@Column(nullable = false, columnDefinition = "TEXT")
 	private String answer;
-
-	@Column(nullable = false, length = 20)
-	private String status;  // PENDING, COMPLETED, FAILED (ERD 확장)
-
-	@Column(columnDefinition = "TEXT")
-	private String metadata;  // JSON: model, latency_ms, token_usage (ERD 확장)
 
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt = LocalDateTime.now();
 
-	public ChatbotHistory(String question, String status) {
+	public ChatHistory(Staff staff, String sessionId, String question, String answer) {
+		this.staff = staff;
+		this.sessionId = sessionId;
 		this.question = question;
-		this.status = status;
+		this.answer = answer;
 	}
 
 	public Long getStaffId() {

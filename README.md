@@ -10,7 +10,7 @@ Spring Boot + Python + MySQL + Ollama 기반의 의료 상담 LLM 시스템입�
 | 백엔드 | Spring Boot 4.0.3, Java 21 |
 | 데이터베이스 | MySQL 8.0 (의학 데이터 + 챗 히스토리) |
 | LLM 서버 | Python 3.10+, FastAPI, Uvicorn |
-| LLM 백엔드 | Ollama (gemma3:4b, 로컬 LLM) |
+| LLM 백엔드 | Ollama (qwen2.5:7b, 로컬 LLM) |
 | RAG/벡터 검색 | ChromaDB + Ollama nomic-embed-text |
 | 비동기 호출 | Spring WebFlux (WebClient) |
 | 스트리밍 | SSE (Server-Sent Events) |
@@ -26,24 +26,30 @@ spring_llm_sample_mng/
 │   │   ├── DataLoader.java              # 초기 시드 데이터 로딩
 │   │   └── WebClientConfig.java         # WebClient Bean 설정
 │   ├── controller/
-│   │   └── LlmController.java           # REST API (쿼리, 의료상담, 스트리밍)
+│   │   ├── MedicalController.java       # 의료 상담 REST API (/api/medical/**)
+│   │   └── ChatController.java          # 병원 규칙 Q&A REST API (/api/chat/**)
 │   ├── dto/
 │   │   ├── DoctorWithScheduleDto.java   # 의사+스케줄 응답 DTO
 │   │   ├── MedicalLlmResponse.java      # 의료상담 통합 응답 DTO
 │   │   ├── LlmRequest.java / LlmResponse.java
-│   │   └── ChatHistoryResponse.java
+│   │   ├── ChatHistoryResponse.java
+│   │   └── MedicalHistoryResponse.java
 │   ├── entity/
-│   │   ├── ChatHistory.java / User.java
+│   │   ├── Staff.java / MedicalHistory.java / ChatHistory.java
 │   │   ├── Doctor.java / DoctorSchedule.java
 │   │   └── MedicalQa.java / MedicalContent.java
 │   ├── service/
-│   │   ├── LlmService.java             # LLM 호출 (동기/스트리밍)
+│   │   ├── MedicalService.java          # 의료 상담 LLM 호출 + 이력 관리
+│   │   ├── ChatService.java             # 병원 규칙 Q&A LLM 호출 + 이력 저장
 │   │   ├── DoctorService.java           # 의사+스케줄 조회
 │   │   └── LlmResponseParser.java      # LLM 응답 파싱 (진료과 추출)
 │   └── exception/                       # 전역 예외 처리
 ├── src/main/resources/
 │   ├── application.yml
-│   └── static/index.html               # 프론트엔드 SPA
+│   └── static/
+│       ├── index.html                   # 메인 허브 페이지
+│       ├── medical.html                 # 질병 Q&A 페이지
+│       └── chat.html                    # 병원 규칙 Q&A 채팅 페이지
 ├── python-llm/                          # Python LLM 서버
 │   ├── app.py                           # FastAPI 앱 (의료상담 + SSE 스트리밍)
 │   ├── ollama_service.py                # Ollama API 클라이언트
@@ -84,7 +90,7 @@ Ollama를 설치하고 필요한 모델을 다운로드합니다.
 
 ```bash
 # Ollama 설치 후 모델 다운로드
-ollama pull gemma3:4b              # LLM 추론 모델
+ollama pull qwen2.5:7b              # LLM 추론 모델
 ollama pull nomic-embed-text       # 임베딩 모델 (RAG 벡터 검색용)
 
 # Ollama 서버 실행 (기본 포트 11434)
@@ -124,14 +130,14 @@ python index_medical_data.py
 **Linux / Mac (bash)**
 
 ```bash
-LLM_BACKEND=ollama OLLAMA_MODEL=gemma3:4b \
+LLM_BACKEND=ollama OLLAMA_MODEL=qwen2.5:7b \
   uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Windows PowerShell**
 
 ```powershell
-$env:LLM_BACKEND="ollama"; $env:OLLAMA_MODEL="gemma3:4b"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+$env:LLM_BACKEND="ollama"; $env:OLLAMA_MODEL="qwen2.5:7b"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 서버 시작 로그에서 `ChromaDB ready: N documents indexed` 확인.
@@ -167,7 +173,7 @@ Spring Boot가 포트 `8080`에서 실행됩니다.
 | ---- | ------ | ---- |
 | `LLM_BACKEND` | `huggingface` | LLM 백엔드 (`huggingface` / `ollama`) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama 서버 URL |
-| `OLLAMA_MODEL` | `gemma3:4b` | Ollama 추론 모델명 |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | Ollama 추론 모델명 |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Ollama 임베딩 모델명 |
 | `USE_VECTOR_SEARCH` | `True` | 벡터 검색 사용 여부 |
 | `VECTOR_SEARCH_TOP_K` | `3` | 벡터 검색 상위 K건 |
@@ -179,12 +185,12 @@ Spring Boot가 포트 `8080`에서 실행됩니다.
 
 ### 의료 상담 (추천 진료과 + 의사 목록)
 
-**`POST /api/llm/query/medical`**
+**`POST /api/medical/query/consult`**
 
 의학 지식 기반 LLM 상담 + 추천 진료과 + 해당 의사 목록을 통합 반환합니다.
 
 ```bash
-curl -X POST http://localhost:8080/api/llm/query/medical \
+curl -X POST http://localhost:8080/api/medical/query/consult \
   -H "Content-Type: application/json" \
   -d '{"query": "무릎이 아프고 걸을 때 통증이 심해요"}'
 ```
@@ -211,44 +217,57 @@ curl -X POST http://localhost:8080/api/llm/query/medical \
 
 ### 의료 상담 스트리밍 (SSE)
 
-**`POST /api/llm/query/medical/stream`**
+**`POST /api/medical/query/stream`**
 
 SSE(Server-Sent Events)로 토큰 단위 실시간 응답을 전송합니다.
 
 ```bash
-curl -N -X POST http://localhost:8080/api/llm/query/medical/stream \
+curl -N -X POST http://localhost:8080/api/medical/query/stream \
   -H "Content-Type: application/json" \
   -d '{"query": "두통이 심합니다"}'
 ```
 
 ### 기본 LLM 쿼리
 
-**`POST /api/llm/query`**
+**`POST /api/medical/query`**
 
 일반 LLM 추론 요청. 쿼리와 응답은 자동으로 DB에 저장됩니다.
 
 ```bash
-curl -X POST http://localhost:8080/api/llm/query \
+curl -X POST http://localhost:8080/api/medical/query \
   -H "Content-Type: application/json" \
   -H "X-User-Id: 1" \
   -d '{"query": "안녕하세요"}'
 ```
 
-### 챗 히스토리 조회
+### 병원 규칙 Q&A
 
-**`GET /api/llm/history/{staffId}`**
+**`POST /api/chat/query`**
 
-특정 직원(Staff)의 챗봇 대화 이력을 페이징으로 조회합니다. (ERD v4.0 CHATBOT_HISTORY 정합)
+의사·간호사가 병원 내부 규칙(당직, 물품, 위생 등)에 대해 질의합니다. `X-Staff-Id` 헤더 필수.
 
 ```bash
-# 기본 조회 (최신순 20건)
-curl http://localhost:8080/api/llm/history/1
-
-# 페이징 파라미터 지정
-curl "http://localhost:8080/api/llm/history/1?page=0&size=10"
+curl -X POST http://localhost:8080/api/chat/query \
+  -H "Content-Type: application/json" \
+  -H "X-Staff-Id: 1" \
+  -d '{"query": "당직 근무 규정이 어떻게 되나요?"}'
 ```
 
-**응답 예시:**
+### 히스토리 조회
+
+**`GET /api/medical/history/{staffId}`** — 의학/질병 관련 질의응답 이력
+
+**`GET /api/chat/history/{staffId}`** — 병원 규칙 Q&A 이력
+
+```bash
+# 의학 이력 조회
+curl http://localhost:8080/api/medical/history/1
+
+# 규칙 Q&A 이력 조회
+curl http://localhost:8080/api/chat/history/1
+```
+
+**의학 이력 응답 예시:**
 
 ```json
 {
@@ -256,10 +275,10 @@ curl "http://localhost:8080/api/llm/history/1?page=0&size=10"
     {
       "id": 1,
       "sessionId": "abc-123",
-      "question": "안녕하세요, 오늘 날씨는?",
-      "answer": "안녕하세요! 오늘 날씨에 대해...",
+      "question": "두통이 심한데 어느 과로 가야 하나요?",
+      "answer": "신경과 진료를 추천드립니다.",
       "status": "COMPLETED",
-      "metadata": "{\"model\":\"gpt2\",\"latency_ms\":1250}",
+      "metadata": "{\"model\":\"qwen2.5:7b\",\"latency_ms\":1250}",
       "createdAt": "2025-03-01T12:00:00"
     }
   ],
@@ -280,26 +299,37 @@ curl "http://localhost:8080/api/llm/history/1?page=0&size=10"
 
 ## 데이터베이스 스키마
 
-### users
+### staff
 
 | 컬럼 | 타입 | 설명 |
 | ---- | ---- | ---- |
-| id | BIGINT (PK) | 사용자 고유 식별자 |
-| username | VARCHAR(100) | 사용자명 |
+| id | BIGINT (PK) | 직원 고유 식별자 |
+| username | VARCHAR(100) | 로그인 ID |
+| employee_number | VARCHAR(20) | 사번 |
 | email | VARCHAR(255) | 이메일 주소 |
 
-### chat_history
+### medical_history (의학/질병 관련)
 
 | 컬럼 | 타입 | 설명 |
 | ---- | ---- | ---- |
-| id | BIGINT (PK) | 히스토리 고유 식별자 |
-| user_id | BIGINT (FK) | 사용자 ID (선택) |
-| session_id | VARCHAR(64) | 세션/대화 그룹 ID |
-| query | TEXT | 사용자 쿼리 |
-| response | TEXT | LLM 응답 |
-| status | VARCHAR(20) | PENDING / COMPLETED / FAILED |
-| metadata | TEXT (JSON) | 모델명, latency_ms 등 성능 분석용 |
-| timestamp | DATETIME | 생성 시각 |
+| id | BIGINT (PK) | 고유 ID |
+| staff_id | BIGINT (FK) | 직원 ID |
+| question | TEXT | 질문 |
+| answer | TEXT | LLM 응답 |
+| status | VARCHAR(20) | PENDING, COMPLETED, FAILED |
+| metadata | TEXT | JSON (latency_ms 등) |
+| created_at | DATETIME | 생성 시각 |
+
+### chatbot_history (병원 규칙 Q&A)
+
+| 컬럼 | 타입 | 설명 |
+| ---- | ---- | ---- |
+| id | BIGINT (PK) | 고유 ID |
+| staff_id | BIGINT (FK) | 직원 ID |
+| session_id | VARCHAR(100) | 세션 ID |
+| question | TEXT | 질문 |
+| answer | TEXT | LLM 응답 |
+| created_at | DATETIME | 생성 시각 |
 
 ## 테스트
 
@@ -326,26 +356,31 @@ cd python-llm
 [프론트엔드 SPA]
     ↓ SSE 스트리밍 + REST API
 [Spring Boot :8080]
-    ├── LlmController (쿼리/의료상담/스트리밍)
+    ├── MedicalController (/api/medical/** — 의료상담/스트리밍)
+    ├── ChatController (/api/chat/** — 병원규칙 Q&A)
+    ├── MedicalService / ChatService (LLM 호출 + 이력)
     ├── DoctorService (의사+스케줄 조회)
     └── LlmResponseParser (진료과 추출)
     ↓ WebClient
 [Python FastAPI :8000]
     ├── /infer/medical         → 의학 컨텍스트 + Ollama Chat (동기)
     ├── /infer/medical/stream  → 의학 컨텍스트 + Ollama Chat (SSE 스트리밍)
+    ├── /infer/rule            → 병원 규칙 RAG + Ollama Chat
     ├── medical_context_service → 하이브리드 검색
     │   ├── ChromaDB 벡터 검색 (의미 유사도, 우선)
     │   └── MySQL FULLTEXT 검색 (키워드, 폴백)
     └── response_cleaner → CJK 필터링 + 후처리
     ↓
 [Ollama :11434]
-    ├── gemma3:4b          → LLM 추론
+    ├── qwen2.5:7b          → LLM 추론
     └── nomic-embed-text   → 임베딩 (RAG 벡터 검색)
 
 [MySQL :3307]
     ├── medical_qa / medical_content → 의학 지식 데이터
     ├── doctors / doctor_schedules   → 의사 + 진료 스케줄
-    └── chat_history / users         → 상담 이력
+    ├── medical_history              → 의료 상담 이력
+    ├── chatbot_history              → 병원 규칙 Q&A 이력
+    └── staff                        → 직원 정보
 ```
 
 ## 주요 기능

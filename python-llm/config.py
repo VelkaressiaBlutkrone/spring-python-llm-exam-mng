@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # LLM
     llm_backend: str = Field(default="huggingface", description="LLM 백엔드 (huggingface | ollama)")
-    llm_model: str = Field(default="gpt2", description="Hugging Face 모델명")
+    llm_model: str = Field(default="qwen2.5:7b", description="Hugging Face 모델명")
     llm_fallback_mock: bool = Field(default=False, description="torch 미지원 시 mock 사용")
 
     @field_validator("llm_fallback_mock", mode="before")
@@ -36,12 +36,13 @@ class Settings(BaseSettings):
 
     # Ollama
     ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama 서버 URL")
-    ollama_model: str = Field(default="gemma3:4b", description="Ollama 모델명")
+    ollama_model: str = Field(default="qwen2.5:7b", description="Ollama 모델명")
     ollama_embed_model: str = Field(default="nomic-embed-text", description="Ollama 임베딩 모델명")
 
     # ChromaDB (벡터 검색)
     chroma_persist_dir: str = Field(default="./chroma_data", description="ChromaDB 저장 경로")
     chroma_collection: str = Field(default="medical_docs", description="ChromaDB 컬렉션명")
+    chroma_rule_collection: str = Field(default="medical_rules", description="병원규칙 ChromaDB 컬렉션명")
     vector_search_top_k: int = Field(default=3, ge=1, le=20, description="벡터 검색 상위 K건")
     use_vector_search: bool = Field(default=True, description="벡터 검색 사용 여부")
 
