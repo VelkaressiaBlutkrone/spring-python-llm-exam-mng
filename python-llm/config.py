@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     use_vector_search: bool = Field(default=True, description="벡터 검색 사용 여부")
 
     # MySQL (의학데이터 조회)
-    mysql_host: str = Field(default="localhost", description="MySQL 호스트")
+    mysql_host: str = Field(default="127.0.0.1", description="MySQL 호스트")
     mysql_port: int = Field(default=3307, ge=1, le=65535, description="MySQL 포트")
     mysql_user: str = Field(default="root", description="MySQL 사용자")
     mysql_password: str = Field(default="rootpassword", description="MySQL 비밀번호")
