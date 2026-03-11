@@ -235,7 +235,7 @@ async def infer_medical(request: InferRequest) -> InferResponse:
         "options": {
             "temperature": request.temperature,
             "num_predict": request.max_length,
-            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>"],
+            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"],
         },
     }
 
@@ -280,7 +280,7 @@ async def infer_medical_stream(request: InferRequest):
         "options": {
             "temperature": request.temperature,
             "num_predict": request.max_length,
-            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>"],
+            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"],
         },
     }
 
@@ -356,7 +356,7 @@ async def infer_rule(request: InferRequest) -> InferResponse:
         "options": {
             "temperature": request.temperature,
             "num_predict": request.max_length,
-            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>"],
+            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"],
         },
     }
 

@@ -10,7 +10,7 @@ class InferRequest(BaseModel):
     """LLM 추론 요청"""
 
     query: str = Field(..., description="사용자 쿼리 텍스트", min_length=1, max_length=4096)
-    max_length: int = Field(default=100, ge=1, le=2048, description="생성 최대 토큰 수")
+    max_length: int = Field(default=512, ge=1, le=2048, description="생성 최대 토큰 수")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="생성 다양성 (0=결정적, 높을수록 다양)")
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0, description="nucleus sampling (선택)")
     num_return_sequences: int = Field(default=1, ge=1, le=5, description="생성 시퀀스 수")
