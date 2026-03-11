@@ -8,7 +8,7 @@ services:
       MYSQL_USER: llm_admin
       MYSQL_PASSWORD: llm_password
     ports:
-      - "3307:3306"
+      - "0.0.0.0:3307:3306"
     volumes:
       - llm_mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password
@@ -22,7 +22,7 @@ services:
     image: chromadb/chroma:1.5.4
     container_name: llm-chromadb
     ports:
-      - "8100:8000"
+      - "0.0.0.0:8100:8000"
     volumes:
       - llm_chroma_data:/chroma/chroma
     environment:
@@ -39,7 +39,7 @@ services:
       dockerfile: Dockerfile
     container_name: llm-python
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
     environment:
       - LLM_BACKEND=ollama
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
@@ -63,7 +63,7 @@ services:
       dockerfile: Dockerfile
     container_name: llm-spring
     ports:
-      - "8080:8080"
+      - "0.0.0.0:8080:8080"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/llm_db
       - SPRING_DATASOURCE_USERNAME=llm_admin
