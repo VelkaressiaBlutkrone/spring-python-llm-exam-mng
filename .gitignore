@@ -45,3 +45,6 @@ nul
 python-llm/chroma_data/
 __pycache__/
 *.pyc
+
+### Data files ###
+llm_data/*.zip

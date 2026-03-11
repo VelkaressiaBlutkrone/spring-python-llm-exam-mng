@@ -4,6 +4,7 @@ PRD 기반: Spring Boot에서 HTTP 호출, RAG 없이 순수 LLM 추론
 """
 
 import logging
+from contextlib import asynccontextmanager
 
 import json
 
@@ -16,7 +17,7 @@ import httpx
 from config import get_settings
 from llm_service import generate
 from medical_context_service import build_medical_context, close_pool, get_pool
-from response_cleaner import NON_KOREAN_CJK_PATTERN, clean_llm_response
+from response_cleaner import NON_KOREAN_CJK_PATTERN, SPECIAL_TOKEN_PATTERN, clean_llm_response
 from schemas import InferRequest, InferResponse
 from typo_corrector import correct_typos
 
@@ -26,6 +27,59 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """앱 시작/종료 시 리소스 관리"""
+    # startup
+    await get_pool()
+    logger.info("MySQL connection pool initialized")
+
+    settings = get_settings()
+    if settings.use_vector_search:
+        try:
+            from vector_store import get_collection
+            collection = get_collection()
+            doc_count = collection.count()
+            logger.info("ChromaDB medical ready: %d documents indexed", doc_count)
+            if doc_count == 0:
+                logger.warning(
+                    "ChromaDB is empty. Run indexing BEFORE starting the server:\n"
+                    "  python index_medical_data.py\n"
+                    "  python index_rule_data.py\n"
+                    "WARNING: Never run index scripts while the server is running "
+                    "(ChromaDB SQLite corruption risk on Windows)"
+                )
+        except Exception as exc:
+            logger.warning("ChromaDB medical initialization failed: %s", exc)
+            logger.warning(
+                "If ChromaDB is corrupted, stop the server, "
+                "delete chroma_data/ directory, re-run index scripts, "
+                "then restart the server."
+            )
+
+        logger.info("Rule vector search will initialize on first request")
+
+    yield
+
+    # shutdown
+    await close_pool()
+    logger.info("MySQL connection pool closed")
+
+
+# 병원 규칙 Q&A 시스템 프롬프트 (의사·간호사용)
+RULE_SYSTEM_PROMPT = (
+    "You are a Korean hospital internal rule Q&A assistant. "
+    "You MUST respond ONLY in Korean (한국어).\n\n"
+    "당신은 병원 내부 규칙(당직·근무, 물품·비품, 위생·감염, 응급 처치 등)에 대해 "
+    "직원(의사·간호사)의 질문에 답변하는 AI 어시스턴트입니다.\n"
+    "반드시 한국어로만 답변하세요.\n\n"
+    "답변 규칙:\n"
+    "1. 병원 내부 규칙, 절차, 매뉴얼 관련 질문에 답변하세요.\n"
+    "2. 제공된 규칙 자료가 있으면 이를 기반으로 답변하고, "
+    "없으면 일반적인 병원 운영 원칙으로 답변하되 '해당 병원 규칙을 확인해 주세요'라고 안내하세요.\n"
+    "3. 의료 진단, 증상, 처방 등은 의학 상담 챗봇을 이용하라고 안내하세요.\n"
+)
 
 # 의학 상담 시스템 프롬프트 (공통)
 MEDICAL_SYSTEM_PROMPT = (
@@ -52,39 +106,20 @@ app = FastAPI(
     title="Python LLM Inference API",
     description="Spring Boot 연동용 LLM 추론 서버",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
-# CORS: Spring Boot 연동 시 필요
+# CORS: Spring Boot 연동 시 허용 origin 제한
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 운영 시 특정 origin으로 제한
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup():
-    """앱 시작 시 DB 커넥션 풀 + ChromaDB 초기화"""
-    await get_pool()
-    logger.info("MySQL connection pool initialized")
-
-    settings = get_settings()
-    if settings.use_vector_search:
-        try:
-            from vector_store import get_collection
-            collection = get_collection()
-            logger.info("ChromaDB ready: %d documents indexed", collection.count())
-        except Exception as exc:
-            logger.warning("ChromaDB initialization failed (vector search disabled): %s", exc)
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """앱 종료 시 DB 커넥션 풀 정리"""
-    await close_pool()
-    logger.info("MySQL connection pool closed")
 
 
 @app.get("/")
@@ -222,6 +257,7 @@ async def infer_medical(request: InferRequest) -> InferResponse:
         "options": {
             "temperature": request.temperature,
             "num_predict": request.max_length,
+            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>"],
         },
     }
 
@@ -266,6 +302,7 @@ async def infer_medical_stream(request: InferRequest):
         "options": {
             "temperature": request.temperature,
             "num_predict": request.max_length,
+            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>"],
         },
     }
 
@@ -284,8 +321,9 @@ async def infer_medical_stream(request: InferRequest):
                         chunk = json.loads(line)
                         raw_token = chunk.get("message", {}).get("content", "")
                         if raw_token:
-                            # 중국어/일본어 문자 실시간 제거
-                            token = NON_KOREAN_CJK_PATTERN.sub("", raw_token)
+                            # 특수 토큰 + 중국어/일본어 문자 실시간 제거
+                            token = SPECIAL_TOKEN_PATTERN.sub("", raw_token)
+                            token = NON_KOREAN_CJK_PATTERN.sub("", token)
                             if token:
                                 data = json.dumps({"token": token}, ensure_ascii=False)
                                 yield f"data: {data}\n\n"
@@ -305,6 +343,57 @@ async def infer_medical_stream(request: InferRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/infer/rule", response_model=InferResponse)
+async def infer_rule(request: InferRequest) -> InferResponse:
+    """
+    병원 규칙 Q&A LLM 추론
+    의사·간호사가 병원 내부 규칙(당직, 물품, 위생 등)에 대해 질의할 때 사용
+    """
+    query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
+    logger.info("Rule infer request: query=%s", repr(query_preview))
+
+    settings = get_settings()
+    corrected_query = correct_typos(request.query)
+
+    # RAG: ChromaDB에서 관련 병원규칙 검색하여 컨텍스트 주입
+    rule_context = ""
+    try:
+        from rule_context_service import build_rule_context
+        rule_context = await build_rule_context(corrected_query)
+    except Exception as exc:
+        logger.warning("Rule context build skipped: %s", exc)
+    logger.info("Rule context: %d chars", len(rule_context))
+
+    messages = [{"role": "system", "content": RULE_SYSTEM_PROMPT}]
+    if rule_context:
+        messages.append({"role": "system", "content": rule_context})
+    messages.append({"role": "user", "content": corrected_query})
+
+    payload = {
+        "model": settings.ollama_model,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": request.temperature,
+            "num_predict": request.max_length,
+            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>"],
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=float(settings.llm_infer_timeout_sec)) as client:
+        response = await client.post(
+            f"{settings.ollama_base_url}/api/chat",
+            json=payload,
+        )
+        response.raise_for_status()
+        result = response.json()
+        raw_text = result.get("message", {}).get("content", "")
+        generated_text = clean_llm_response(raw_text)
+
+    logger.info("Rule infer response: length=%d", len(generated_text))
+    return InferResponse(generated_text=generated_text)
 
 
 if __name__ == "__main__":

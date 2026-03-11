@@ -3,7 +3,14 @@
 > **기준 문서:** [proejct-team-alpha/documents](https://github.com/proejct-team-alpha/documents) ERD v4.0  
 > **작성일:** 2026-03-10
 
-본 프로젝트(spring_llm_sample_mng)는 LLM 샘플 + 의학지식 관리 시스템으로, HMS(병원 예약 & 내부 업무 시스템) ERD 문서와 **부분적으로** 정합됩니다. 아래 테이블들은 ERD 문서에 정의되어 있지 않으며, **의학지식 LLM 및 의사 추천** 기능을 위해 별도로 사용됩니다.
+본 프로젝트(spring_llm_sample_mng)는 LLM 샘플 + 의학지식 관리 시스템으로, HMS(병원 예약 & 내부 업무 시스템) ERD 문서와 **부분적으로** 정합됩니다.
+
+## 테이블 역할 구분
+
+| 테이블 | 용도 | ERD 대응 |
+|--------|------|----------|
+| `medical_history` | 의학/질병 관련 질의응답 (증상 추천, 진료과 추천) | — |
+| `chatbot_history` | 병원 규칙 Q&A (당직, 물품, 위생 등) | CHATBOT_HISTORY |
 
 ---
 
