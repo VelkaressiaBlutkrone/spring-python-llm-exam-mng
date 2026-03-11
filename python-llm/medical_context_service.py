@@ -28,8 +28,9 @@ async def get_pool() -> aiomysql.Pool:
             password=settings.mysql_password,
             db=settings.mysql_db,
             charset="utf8mb4",
-            minsize=2,
+            minsize=0,
             maxsize=10,
+            connect_timeout=10,
         )
     return _pool
 

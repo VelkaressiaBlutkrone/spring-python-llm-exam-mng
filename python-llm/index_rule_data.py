@@ -128,7 +128,7 @@ async def main():
     logger.info("=== Medical Rule Data Import & Indexing ===")
     logger.info("JSON source: %s", JSON_PATH)
     logger.info("Ollama: %s, Embed model: %s", settings.ollama_base_url, settings.ollama_embed_model)
-    logger.info("ChromaDB: %s / %s", settings.chroma_persist_dir, settings.chroma_rule_collection)
+    logger.info("ChromaDB: %s:%d / %s", settings.chroma_host, settings.chroma_port, settings.chroma_collection)
 
     # 1. JSON 로드
     rules = load_json_rules()

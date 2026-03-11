@@ -39,8 +39,9 @@ class Settings(BaseSettings):
     ollama_model: str = Field(default="qwen2.5:7b", description="Ollama 모델명")
     ollama_embed_model: str = Field(default="nomic-embed-text", description="Ollama 임베딩 모델명")
 
-    # ChromaDB (벡터 검색)
-    chroma_persist_dir: str = Field(default="./chroma_data", description="ChromaDB 저장 경로")
+    # ChromaDB (벡터 검색 - Docker HttpClient)
+    chroma_host: str = Field(default="localhost", description="ChromaDB 서버 호스트")
+    chroma_port: int = Field(default=8100, ge=1, le=65535, description="ChromaDB 서버 포트")
     chroma_collection: str = Field(default="medical_docs", description="ChromaDB 컬렉션명")
     chroma_rule_collection: str = Field(default="medical_rules", description="병원규칙 ChromaDB 컬렉션명")
     vector_search_top_k: int = Field(default=3, ge=1, le=20, description="벡터 검색 상위 K건")

@@ -16,12 +16,15 @@ _collection = None
 
 
 def get_chroma_client() -> chromadb.ClientAPI:
-    """ChromaDB 클라이언트 싱글톤"""
+    """ChromaDB 클라이언트 싱글톤 (Docker HttpClient)"""
     global _client
     if _client is None:
         settings = get_settings()
-        _client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-        logger.info("ChromaDB initialized: %s", settings.chroma_persist_dir)
+        _client = chromadb.HttpClient(
+            host=settings.chroma_host,
+            port=settings.chroma_port,
+        )
+        logger.info("ChromaDB connected: %s:%d", settings.chroma_host, settings.chroma_port)
     return _client
 
 

@@ -124,7 +124,7 @@ async def main():
     settings = get_settings()
     logger.info("=== Medical Data Vector Indexing ===")
     logger.info("Ollama: %s, Embed model: %s", settings.ollama_base_url, settings.ollama_embed_model)
-    logger.info("ChromaDB: %s / %s", settings.chroma_persist_dir, settings.chroma_collection)
+    logger.info("ChromaDB: %s:%d / %s", settings.chroma_host, settings.chroma_port, settings.chroma_collection)
 
     # MySQL에서 데이터 조회
     qa_rows = fetch_medical_qa(settings)
