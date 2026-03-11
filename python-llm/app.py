@@ -53,9 +53,9 @@ RULE_SYSTEM_PROMPT = (
     "직원(의사·간호사)의 질문에 답변하는 AI 어시스턴트입니다.\n"
     "반드시 한국어로만 답변하세요.\n\n"
     "답변 규칙:\n"
-    "1. 병원 내부 규칙, 절차, 매뉴얼 관련 질문에 답변하세요.\n"
-    "2. 제공된 규칙 자료가 있으면 이를 기반으로 답변하고, "
-    "없으면 일반적인 병원 운영 원칙으로 답변하되 '해당 병원 규칙을 확인해 주세요'라고 안내하세요.\n"
+    "1. 반드시 제공된 [참고: 병원 규칙 검색 결과] 자료만을 기반으로 답변하세요.\n"
+    "2. 제공된 규칙 자료에 해당 내용이 없으면, 절대로 추측하거나 일반 지식으로 답변하지 마세요. "
+    "반드시 '해당 내용이 등록되어 있지 않습니다. 관리자에게 문의 바랍니다.'라고 답변하세요.\n"
     "3. 의료 진단, 증상, 처방 등은 의학 상담 챗봇을 이용하라고 안내하세요.\n"
 )
 
@@ -344,9 +344,14 @@ async def infer_rule(request: InferRequest) -> InferResponse:
         logger.warning("Rule context build skipped: %s", exc)
     logger.info("Rule context: %d chars", len(rule_context))
 
+    # 검색 결과가 없으면 LLM 호출 없이 안내 메시지 반환
+    if not rule_context:
+        no_result_msg = "해당 내용이 등록되어 있지 않습니다. 관리자에게 문의 바랍니다."
+        logger.info("Rule infer: no context found, returning fallback message")
+        return InferResponse(generated_text=no_result_msg)
+
     messages = [{"role": "system", "content": RULE_SYSTEM_PROMPT}]
-    if rule_context:
-        messages.append({"role": "system", "content": rule_context})
+    messages.append({"role": "system", "content": rule_context})
     messages.append({"role": "user", "content": corrected_query})
 
     payload = {
