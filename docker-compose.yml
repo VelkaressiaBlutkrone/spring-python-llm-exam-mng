@@ -33,6 +33,48 @@ services:
       timeout: 5s
       retries: 5
 
+  python-llm:
+    build:
+      context: ./python-llm
+      dockerfile: Dockerfile
+    container_name: llm-python
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_BACKEND=ollama
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=rootpassword
+      - MYSQL_DB=llm_db
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - USE_VECTOR_SEARCH=true
+    depends_on:
+      mysql:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+
+  spring-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-spring
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/llm_db
+      - SPRING_DATASOURCE_USERNAME=llm_admin
+      - SPRING_DATASOURCE_PASSWORD=llm_password
+      - LLM_SERVICE_URL=http://python-llm:8000
+    depends_on:
+      mysql:
+        condition: service_healthy
+      python-llm:
+        condition: service_started
+
 volumes:
   llm_mysql_data:
   llm_chroma_data:

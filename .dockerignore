@@ -1,0 +1,16 @@
+.gradle
+build
+.idea
+*.iml
+*.iws
+*.ipr
+.vscode
+.claude
+.omc
+.ai
+node_modules
+python-llm/.venv
+python-llm/chroma_data
+python-llm/__pycache__
+llm_data/*.zip
+*.pyc

@@ -1,6 +1,6 @@
 # Python LLM 추론 서버
-# 빌드: docker build -t python-llm .
-# 실행: docker run -p 8000:8000 -e LLM_FALLBACK_MOCK=1 python-llm
+# 빌드: docker compose build python-llm
+# 단독: docker build -t python-llm .
 
 FROM python:3.11-slim
 
@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 소스 복사
-COPY app.py config.py llm_service.py schemas.py ./
+COPY *.py ./
 
 EXPOSE 8000
 
