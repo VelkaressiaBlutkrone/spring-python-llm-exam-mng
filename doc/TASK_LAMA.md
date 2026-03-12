@@ -10,13 +10,13 @@
 
 ### 1.1 시스템 환경
 
-| 항목 | 값 |
-| ---- | -- |
-| OS | Windows 11 Pro 10.0.26200 |
-| Ollama 위치 | WSL2 (localhost:11434) |
-| Python | 3.12.10 (venv: `python-llm/.venv`) |
-| torch | 2.6.0+cpu (CPU 전용) |
-| 설치 모델 | `llama3:8b`, `gemma3:4b`, `qwen2.5:7b` |
+| 항목        | 값                                     |
+| ----------- | -------------------------------------- |
+| OS          | Windows 11 Pro 10.0.26200              |
+| Ollama 위치 | WSL2 (localhost:11434)                 |
+| Python      | 3.12.10 (venv: `python-llm/.venv`)     |
+| torch       | 2.6.0+cpu (CPU 전용)                   |
+| 설치 모델   | `llama3:8b`, `gemma3:4b`, `qwen2.5:7b` |
 
 ### 1.2 Ollama 접근 방식
 
@@ -75,14 +75,14 @@ curl -s http://localhost:11434/api/generate \
 
 **응답:**
 
-| 항목 | 값 |
-| ---- | -- |
-| response | `"I'm excited to be chatting with you!"` |
-| total_duration | 3,083ms (모델 로딩 2,929ms 포함) |
-| prompt_eval_count | 17 tokens |
-| eval_count | 10 tokens |
-| eval_duration | 121ms |
-| **토큰 생성 속도** | **~82 tok/s** |
+| 항목               | 값                                       |
+| ------------------ | ---------------------------------------- |
+| response           | `"I'm excited to be chatting with you!"` |
+| total_duration     | 3,083ms (모델 로딩 2,929ms 포함)         |
+| prompt_eval_count  | 17 tokens                                |
+| eval_count         | 10 tokens                                |
+| eval_duration      | 121ms                                    |
+| **토큰 생성 속도** | **~82 tok/s**                            |
 
 **결과: 정상** — 영문 생성 우수, 첫 요청 시 모델 로딩 ~3초 소요
 
@@ -95,14 +95,14 @@ curl -s http://localhost:11434/api/generate \
 
 **응답:**
 
-| 항목 | 값 |
-| ---- | -- |
-| response | `"The capital of South Korea is Seoul."` |
-| total_duration | 291ms |
-| prompt_eval_count | 23 tokens |
-| eval_count | 9 tokens |
-| eval_duration | 155ms |
-| **토큰 생성 속도** | **~58 tok/s** |
+| 항목               | 값                                       |
+| ------------------ | ---------------------------------------- |
+| response           | `"The capital of South Korea is Seoul."` |
+| total_duration     | 291ms                                    |
+| prompt_eval_count  | 23 tokens                                |
+| eval_count         | 9 tokens                                 |
+| eval_duration      | 155ms                                    |
+| **토큰 생성 속도** | **~58 tok/s**                            |
 
 **결과: 정상** — 모델 캐시 상태에서 빠른 응답 (291ms)
 
@@ -119,12 +119,12 @@ curl -s http://localhost:11434/api/chat \
 
 **응답:**
 
-| 항목 | 값 |
-| ---- | -- |
-| content | 영문으로 응답 (한국어 미인식) |
-| total_duration | 1,427ms |
-| eval_count | 101 tokens |
-| **토큰 생성 속도** | **~78 tok/s** |
+| 항목               | 값                            |
+| ------------------ | ----------------------------- |
+| content            | 영문으로 응답 (한국어 미인식) |
+| total_duration     | 1,427ms                       |
+| eval_count         | 101 tokens                    |
+| **토큰 생성 속도** | **~78 tok/s**                 |
 
 **결과: 한국어 미지원** — llama3:8b는 한국어 입력을 이해하지 못하고 영문으로 응답
 
@@ -137,11 +137,11 @@ curl -s http://localhost:11434/api/chat \
 
 **응답:**
 
-| 항목 | 값 |
-| ---- | -- |
-| content | 깨진 문자 출력 (유니코드 인코딩 오류) |
-| total_duration | 710ms |
-| eval_count | 21 tokens |
+| 항목           | 값                                    |
+| -------------- | ------------------------------------- |
+| content        | 깨진 문자 출력 (유니코드 인코딩 오류) |
+| total_duration | 710ms                                 |
+| eval_count     | 21 tokens                             |
 
 **결과: 실패** — llama3:8b는 한국어 생성 능력 부재, 깨진 문자 출력
 
@@ -151,14 +151,14 @@ curl -s http://localhost:11434/api/chat \
 
 ### 3.1 llama3:8b (Q4_0) on WSL2 CPU
 
-| 측정 항목 | 값 |
-| --------- | -- |
-| 모델 크기 | 4.3GB (Q4_0 양자화) |
-| 첫 요청 로딩 시간 | ~3초 |
-| 캐시 상태 응답 시간 | 150~300ms (짧은 응답) |
-| 토큰 생성 속도 | 58~82 tok/s |
-| 프롬프트 평가 속도 | ~600 tok/s |
-| 한국어 지원 | **미지원** (영문 전용) |
+| 측정 항목           | 값                     |
+| ------------------- | ---------------------- |
+| 모델 크기           | 4.3GB (Q4_0 양자화)    |
+| 첫 요청 로딩 시간   | ~3초                   |
+| 캐시 상태 응답 시간 | 150~300ms (짧은 응답)  |
+| 토큰 생성 속도      | 58~82 tok/s            |
+| 프롬프트 평가 속도  | ~600 tok/s             |
+| 한국어 지원         | **미지원** (영문 전용) |
 
 ### 3.2 응답 시간 분석
 
@@ -184,11 +184,11 @@ curl -s http://localhost:11434/api/chat \
 
 ### 4.1 모델별 한국어 능력 비교
 
-| 모델 | 한국어 입력 이해 | 한국어 출력 | 비고 |
-| ---- | --------------- | ---------- | ---- |
-| `llama3:8b` | 미인식 | 깨진 문자 | 영문 전용 |
-| `gemma3:4b` | 미인식 | 영문/깨진 문자 | 한국어 토큰 부족 |
-| **`qwen2.5:7b`** | **정상** | **정상 (한국어)** | **한국어 우수, 권장** |
+| 모델             | 한국어 입력 이해 | 한국어 출력       | 비고                  |
+| ---------------- | ---------------- | ----------------- | --------------------- |
+| `llama3:8b`      | 미인식           | 깨진 문자         | 영문 전용             |
+| `gemma3:4b`      | 미인식           | 영문/깨진 문자    | 한국어 토큰 부족      |
+| **`qwen2.5:7b`** | **정상**         | **정상 (한국어)** | **한국어 우수, 권장** |
 
 ### 4.2 qwen2.5:7b 한국어 테스트 결과
 
@@ -206,10 +206,10 @@ curl -s http://localhost:11434/api/chat \
 3. 장기간 지속되거나 반복되는 두통이 있다면, 신경과 전..."
 ```
 
-| 측정 항목 | 값 |
-| --------- | -- |
-| Eval tokens | 88 |
-| Duration | 1,590ms |
+| 측정 항목   | 값                          |
+| ----------- | --------------------------- |
+| Eval tokens | 88                          |
+| Duration    | 1,590ms                     |
 | 한국어 품질 | 우수 (자연스러운 의학 안내) |
 
 ### 4.3 권장 모델
@@ -231,22 +231,22 @@ OLLAMA_MODEL=qwen2.5:7b
 
 ### 5.1 구현 현황
 
-| 구성 요소 | 상태 | 파일 |
-| --------- | ---- | ---- |
-| Ollama 서버 (WSL2) | 정상 동작 | — |
-| qwen2.5:7b 모델 | 한국어 정상 | — |
-| `ollama_service.py` | **구현 완료** | `python-llm/ollama_service.py` |
-| `config.py` llm_backend | **추가 완료** | `python-llm/config.py` |
-| `/infer` Ollama 연동 | **구현 완료** | `python-llm/app.py` |
-| `/health` Ollama 상태 | **구현 완료** | `python-llm/app.py` |
-| `medical_context_service.py` | 미구현 (MySQL 연동 필요) | — |
+| 구성 요소                    | 상태                     | 파일                           |
+| ---------------------------- | ------------------------ | ------------------------------ |
+| Ollama 서버 (WSL2)           | 정상 동작                | —                              |
+| qwen2.5:7b 모델              | 한국어 정상              | —                              |
+| `ollama_service.py`          | **구현 완료**            | `python-llm/ollama_service.py` |
+| `config.py` llm_backend      | **추가 완료**            | `python-llm/config.py`         |
+| `/infer` Ollama 연동         | **구현 완료**            | `python-llm/app.py`            |
+| `/health` Ollama 상태        | **구현 완료**            | `python-llm/app.py`            |
+| `medical_context_service.py` | 미구현 (MySQL 연동 필요) | —                              |
 
 ### 5.2 E2E 테스트 결과
 
 #### GET /health (Ollama 모드)
 
 ```json
-{"status": "healthy", "llm_backend": "ollama", "ollama_connected": true}
+{ "status": "healthy", "llm_backend": "ollama", "ollama_connected": true }
 ```
 
 #### POST /infer (Ollama 모드, qwen2.5:7b)
@@ -269,6 +269,7 @@ POST http://localhost:8000/infer
 ```
 
 **결과: E2E 정상 동작 확인**
+
 - Windows Host → Python FastAPI (localhost:8000) → Ollama WSL2 (localhost:11434) → qwen2.5:7b
 
 ### 5.3 서버 실행 방법
@@ -321,19 +322,20 @@ tests/test_infer.py::test_health                 PASSED
 
 ## 7. 이슈 및 해결 기록
 
-| # | 이슈 | 원인 | 해결 |
-| - | ---- | ---- | ---- |
-| 1 | pytest collected 0 items | 프로젝트 루트에서 실행 (python-llm/ 아님) | `cd python-llm` 후 실행 |
-| 2 | torch DLL access violation | torch 2.10.0 Windows DLL 호환 문제 | torch 2.6.0+cpu로 다운그레이드 |
-| 3 | pytest import error (fastapi) | 시스템 Python 사용 (venv 미활성) | `.venv/Scripts/python -m pytest` 사용 |
-| 4 | conftest mock 불충분 | `LLM_FALLBACK_MOCK=1`로는 torch import 차단 불가 | `sys.modules["llm_service"]` mock 교체 |
-| 5 | llama3:8b 한국어 깨짐 | 한국어 학습 데이터 부재 | gemma3 또는 qwen2.5 모델 권장 |
+| #   | 이슈                          | 원인                                             | 해결                                   |
+| --- | ----------------------------- | ------------------------------------------------ | -------------------------------------- |
+| 1   | pytest collected 0 items      | 프로젝트 루트에서 실행 (python-llm/ 아님)        | `cd python-llm` 후 실행                |
+| 2   | torch DLL access violation    | torch 2.10.0 Windows DLL 호환 문제               | torch 2.6.0+cpu로 다운그레이드         |
+| 3   | pytest import error (fastapi) | 시스템 Python 사용 (venv 미활성)                 | `.venv/Scripts/python -m pytest` 사용  |
+| 4   | conftest mock 불충분          | `LLM_FALLBACK_MOCK=1`로는 torch import 차단 불가 | `sys.modules["llm_service"]` mock 교체 |
+| 5   | llama3:8b 한국어 깨짐         | 한국어 학습 데이터 부재                          | gemma3 또는 qwen2.5 모델 권장          |
 
 ---
 
 ## 8. 문서 이력
 
-| 버전 | 날짜 | 변경 내용 |
-| ---- | ---- | ---------- |
-| 1.0 | 2026-03-06 | 최초 작성: WSL2 Ollama 실제 동작 테스트 (llama3:8b), pytest 수정 기록 |
-| 1.1 | 2026-03-06 | 한국어 모델 비교 (qwen2.5:7b 채택), ollama_service.py 구현, E2E 테스트 완료 |
+| 버전 | 날짜       | 변경 내용                                                                   |
+| ---- | ---------- | --------------------------------------------------------------------------- |
+| 1.0  | 2026-03-06 | 최초 작성: WSL2 Ollama 실제 동작 테스트 (llama3:8b), pytest 수정 기록       |
+| 1.1  | 2026-03-06 | 한국어 모델 비교 (qwen2.5:7b 채택), ollama_service.py 구현, E2E 테스트 완료 |
+| 1.1  | 2026-03-06 | 한국어 모델 비교 (qwen2.5:7b 채택), ollama_service.py 구현, E2E 테스트 완료 |

@@ -60,12 +60,14 @@ Python LLM 모듈은 FastAPI 기반 추론 서버로, Spring Boot에서 HTTP 호
 ### Step 5. LLM 서비스 모듈 구현
 
 **Ollama 모드 (권장)**:
+
 - `ollama_service.py` 생성: Ollama REST API 클라이언트
 - `httpx`로 `http://localhost:11434/api/generate` 또는 `/api/chat` 호출
 - 환경변수: `OLLAMA_BASE_URL`, `OLLAMA_MODEL` (e.g., `gemma3:4b`, `qwen2.5:7b`)
 - 모델 로딩 없음 (Ollama 서버가 별도 실행)
 
 **Hugging Face 모드 (선택)**:
+
 - `llm_service.py`: `pipeline` 또는 `AutoModelForCausalLM` 사용
 - 환경변수: `LLM_MODEL` (e.g., `gpt2`)
 
@@ -133,26 +135,26 @@ Python LLM 모듈은 FastAPI 기반 추론 서버로, Spring Boot에서 HTTP 호
 
 ## 의존성 요약
 
-| 패키지 | 용도 |
-| ------ | ---- |
-| fastapi | REST API 프레임워크 |
-| uvicorn | ASGI 서버 |
-| httpx | Ollama REST API 호출 (비동기) |
-| pydantic, pydantic-settings | 요청/응답 검증, 설정 관리 |
-| python-dotenv | 환경변수 로드 |
-| transformers, torch | Hugging Face 백엔드 (선택) |
-| pytest, httpx | 테스트 |
+| 패키지                      | 용도                          |
+| --------------------------- | ----------------------------- |
+| fastapi                     | REST API 프레임워크           |
+| uvicorn                     | ASGI 서버                     |
+| httpx                       | Ollama REST API 호출 (비동기) |
+| pydantic, pydantic-settings | 요청/응답 검증, 설정 관리     |
+| python-dotenv               | 환경변수 로드                 |
+| transformers, torch         | Hugging Face 백엔드 (선택)    |
+| pytest, httpx               | 테스트                        |
 
 ---
 
 ## API 스펙 (Python 서버)
 
-| 엔드포인트 | 메서드 | 설명 |
-| ---------- | ------ | ---- |
-| `/` | GET | 서버 상태 확인 |
-| `/health` | GET | 헬스체크 (Ollama 연결 여부 포함) |
-| `/infer` | POST | 쿼리 입력 → LLM 응답 반환 (Ollama `/api/generate`) |
-| `/infer/medical` | POST | 의학지식 DB 기반 추론 (Ollama `/api/chat`) |
+| 엔드포인트       | 메서드 | 설명                                               |
+| ---------------- | ------ | -------------------------------------------------- |
+| `/`              | GET    | 서버 상태 확인                                     |
+| `/health`        | GET    | 헬스체크 (Ollama 연결 여부 포함)                   |
+| `/infer`         | POST   | 쿼리 입력 → LLM 응답 반환 (Ollama `/api/generate`) |
+| `/infer/medical` | POST   | 의학지식 DB 기반 추론 (Ollama `/api/chat`)         |
 
 **요청 예시** (Spring Boot에서 호출):
 
@@ -175,7 +177,9 @@ Python LLM 모듈은 FastAPI 기반 추론 서버로, Spring Boot에서 HTTP 호
 
 **실행 예시** (Ollama 모드):
 
-```bash
+````bash
 # Ollama 서버 선실행 필요: ollama serve
 LLM_BACKEND=ollama OLLAMA_MODEL=qwen2.5:7b uvicorn app:app --host 0.0.0.0 --port 8000
-```
+```llama 서버 선실행 필요: ollama serve
+LLM_BACKEND=ollama OLLAMA_MODEL=qwen2.5:7b uvicorn app:app --host 0.0.0.0 --port 8000
+````
