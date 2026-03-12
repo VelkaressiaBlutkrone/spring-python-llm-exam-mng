@@ -59,13 +59,13 @@ def clean_llm_response(text: str) -> str:
     # (5) CJK 제거 후 남은 고아 구두점 정리 (예: ",,.", "...")
     cleaned = re.sub(r"[.,;:]{2,}", "", cleaned)
 
-    # (5) 연속 공백 정규화
+    # (6) 연속 공백 정규화
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     # 빈 줄만 남은 라인 제거
     cleaned = re.sub(r"\n +\n", "\n\n", cleaned)
 
-    # (4) 문장이 중간에 잘린 경우 마지막 불완전 문장 제거
+    # (7) 문장이 중간에 잘린 경우 마지막 불완전 문장 제거
     cleaned = _trim_incomplete_ending(cleaned)
 
     cleaned = cleaned.strip()

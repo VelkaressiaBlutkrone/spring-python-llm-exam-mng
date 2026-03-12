@@ -4,6 +4,7 @@ MySQL FULLTEXT 검색(ngram)을 활용하여 사용자 질문과 관련된
 의학 Q&A 및 원천 콘텐츠를 조회하고, LLM 프롬프트용 컨텍스트를 생성합니다.
 """
 
+import asyncio
 import logging
 import re
 
@@ -171,16 +172,50 @@ async def search_vector_store(query: str, top_k: int = 3) -> list[dict]:
         return []
 
 
-async def build_medical_context(query: str) -> str:
+async def build_medical_context(query: str, client=None) -> str:
     """
     사용자 질문에 대한 의학 컨텍스트 빌드
     하이브리드 검색: MySQL FULLTEXT + ChromaDB 벡터 검색 결합
+    3개 검색을 asyncio.gather로 병렬 실행
     """
     settings = get_settings()
+
+    # 쿼리 확장 (활성화된 경우)
+    from query_expander import expand_query
+    search_query = await expand_query(query, client=client)
+
+    # 3개 검색을 병렬로 동시 실행
+    vector_results, qa_results, content_results = await asyncio.gather(
+        search_vector_store(search_query, top_k=settings.vector_search_top_k),
+        search_medical_qa(search_query, limit=3),
+        search_medical_content(search_query, limit=2),
+        return_exceptions=True,
+    )
+
+    # 예외 발생 시 빈 리스트로 대체
+    if isinstance(vector_results, Exception):
+        logger.warning("Vector search failed in gather: %s", vector_results)
+        vector_results = []
+    if isinstance(qa_results, Exception):
+        logger.warning("QA search failed in gather: %s", qa_results)
+        qa_results = []
+    if isinstance(content_results, Exception):
+        logger.warning("Content search failed in gather: %s", content_results)
+        content_results = []
+
+    # Re-ranking: 벡터 검색 결과 재정렬
+    if vector_results and len(vector_results) > 1:
+        from reranker import rerank_results
+        vector_results = await rerank_results(
+            query=search_query,
+            results=vector_results,
+            top_k=settings.vector_search_top_k,
+            client=client,
+        )
+
     parts = []
 
-    # 1. 벡터 검색 (의미 기반)
-    vector_results = await search_vector_store(query, top_k=settings.vector_search_top_k)
+    # 1. 벡터 검색 결과 (의미 기반)
     if vector_results:
         parts.append("[참고: 벡터 검색 결과 (의미 유사도)]")
         for item in vector_results:
@@ -197,31 +232,27 @@ async def build_medical_context(query: str) -> str:
             parts.append(item["document"][:500])
             parts.append("")
 
-    # 2. MySQL FULLTEXT 검색 (키워드 기반) - 벡터 결과가 부족할 때 보완
-    if len(vector_results) < 2:
-        qa_results = await search_medical_qa(query, limit=3)
-        if qa_results:
-            parts.append("[참고: 관련 의학 Q&A]")
-            for qa in qa_results:
-                parts.append(f"진료과: {qa['department']}")
-                parts.append(f"Q: {qa['question'][:500]}")
-                parts.append(f"A: {qa['answer'][:500]}")
-                parts.append("")
+    # 2. 벡터 결과 부족 시 FULLTEXT Q&A 보완
+    if len(vector_results) < 2 and qa_results:
+        parts.append("[참고: 관련 의학 Q&A]")
+        for qa in qa_results:
+            parts.append(f"진료과: {qa['department']}")
+            parts.append(f"Q: {qa['question'][:500]}")
+            parts.append(f"A: {qa['answer'][:500]}")
+            parts.append("")
 
-    if len(vector_results) < 1:
-        content_results = await search_medical_content(query, limit=2)
-        if content_results:
-            parts.append("[참고: 관련 의학 지식]")
-            for c in content_results:
-                source = c.get("source_spec", "")
-                parts.append(f"출처: {source}")
-                parts.append(f"{c['content'][:800]}")
-                parts.append("")
+    # 3. 벡터 결과 없으면 콘텐츠도 보완
+    if len(vector_results) < 1 and content_results:
+        parts.append("[참고: 관련 의학 지식]")
+        for c in content_results:
+            source = c.get("source_spec", "")
+            parts.append(f"출처: {source}")
+            parts.append(f"{c['content'][:800]}")
+            parts.append("")
 
     context = "\n".join(parts) if parts else ""
 
     # 컨텍스트 길이 제한 (프롬프트 최적화)
-    settings = get_settings()
     max_chars = settings.medical_context_max_chars
     if len(context) > max_chars:
         # 마지막 완전한 줄 기준으로 자르기

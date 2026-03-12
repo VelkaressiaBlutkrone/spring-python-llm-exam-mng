@@ -1,6 +1,6 @@
 """
 병원규칙 RAG 벡터 검색 -> LLM 컨텍스트 주입 서비스
-기존 medical_docs 컬렉션을 재사용하며, metadata type="rule"로 필터링
+medical_rules 전용 컬렉션 사용
 """
 
 import logging
@@ -11,17 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 def _get_collection():
-    """기존 medical_docs 컬렉션 재사용"""
-    from vector_store import get_collection
-    return get_collection()
+    """병원규칙 전용 컬렉션 사용"""
+    from vector_store import get_rule_collection
+    return get_rule_collection()
 
 
 def get_rule_document_count() -> int:
     """병원규칙 벡터 저장소 문서 수 조회"""
     try:
         col = _get_collection()
-        result = col.get(where={"type": "rule"}, limit=1, include=[])
-        return len(result["ids"]) if result and result["ids"] else 0
+        return col.count()
     except Exception:
         return 0
 
@@ -32,10 +31,10 @@ def add_rule_documents(
     embeddings: list[list[float]],
     metadatas: list[dict] | None = None,
 ):
-    """병원규칙을 기존 medical_docs 컬렉션에 추가 (type=rule 메타데이터)"""
-    from vector_store import add_documents
-    add_documents(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
-    logger.info("Added/updated %d rule documents to vector store", len(ids))
+    """병원규칙을 전용 컬렉션에 추가"""
+    col = _get_collection()
+    col.upsert(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
+    logger.info("Added/updated %d rule documents to rule collection", len(ids))
 
 
 async def search_rule_vector_store(query: str, top_k: int = 3) -> list[dict]:
@@ -55,7 +54,6 @@ async def search_rule_vector_store(query: str, top_k: int = 3) -> list[dict]:
         results = col.query(
             query_embeddings=[query_embedding],
             n_results=min(top_k, col.count()),
-            where={"type": "rule"},
         )
 
         items = []

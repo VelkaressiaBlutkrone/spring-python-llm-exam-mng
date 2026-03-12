@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _client = None
 _collection = None
+_rule_collection = None
 
 
 def get_chroma_client() -> chromadb.ClientAPI:
@@ -44,6 +45,24 @@ def get_collection() -> chromadb.Collection:
             _collection.count(),
         )
     return _collection
+
+
+def get_rule_collection() -> chromadb.Collection:
+    """병원규칙 전용 컬렉션 조회/생성"""
+    global _rule_collection
+    if _rule_collection is None:
+        settings = get_settings()
+        client = get_chroma_client()
+        _rule_collection = client.get_or_create_collection(
+            name=settings.chroma_rule_collection,
+            metadata={"hnsw:space": "cosine"},
+        )
+        logger.info(
+            "ChromaDB rule collection '%s': %d documents",
+            settings.chroma_rule_collection,
+            _rule_collection.count(),
+        )
+    return _rule_collection
 
 
 def add_documents(

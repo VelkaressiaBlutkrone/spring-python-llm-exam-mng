@@ -4,6 +4,7 @@ PRD 기반: Spring Boot에서 HTTP 호출, RAG 없이 순수 LLM 추론
 """
 
 import logging
+import time as _time
 from contextlib import asynccontextmanager
 
 import json
@@ -14,11 +15,19 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 import httpx
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+from circuit_breaker import ServiceUnavailableError
+from metrics import metrics
 from config import get_settings
 from llm_service import generate
 from medical_context_service import build_medical_context, close_pool, get_pool
+from prompt_loader import load_prompt
 from response_cleaner import NON_KOREAN_CJK_PATTERN, SPECIAL_TOKEN_PATTERN, clean_llm_response
-from schemas import InferRequest, InferResponse
+import aiomysql
+from schemas import InferRequest, InferResponse, FeedbackRequest, FeedbackResponse
 from typo_corrector import correct_typos
 
 # 로깅 설정
@@ -38,47 +47,24 @@ async def lifespan(app: FastAPI):
                 settings.chroma_host, settings.chroma_port,
                 settings.use_vector_search)
 
+    app.state.http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(
+            connect=5.0,
+            read=float(settings.llm_infer_timeout_sec),
+            write=5.0,
+            pool=5.0,
+        ),
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+    )
+    logger.info("Shared httpx client created")
+
     yield
 
     # shutdown
+    await app.state.http_client.aclose()
     await close_pool()
-    logger.info("MySQL connection pool closed")
+    logger.info("Resources cleaned up")
 
-
-# 병원 규칙 Q&A 시스템 프롬프트 (의사·간호사용)
-RULE_SYSTEM_PROMPT = (
-    "You are a Korean hospital internal rule Q&A assistant. "
-    "You MUST respond ONLY in Korean (한국어).\n\n"
-    "당신은 병원 내부 규칙(당직·근무, 물품·비품, 위생·감염, 응급 처치 등)에 대해 "
-    "직원(의사·간호사)의 질문에 답변하는 AI 어시스턴트입니다.\n"
-    "반드시 한국어로만 답변하세요.\n\n"
-    "답변 규칙:\n"
-    "1. 반드시 제공된 [참고: 병원 규칙 검색 결과] 자료만을 기반으로 답변하세요.\n"
-    "2. 제공된 규칙 자료에 해당 내용이 없으면, 절대로 추측하거나 일반 지식으로 답변하지 마세요. "
-    "반드시 '해당 내용이 등록되어 있지 않습니다. 관리자에게 문의 바랍니다.'라고 답변하세요.\n"
-    "3. 의료 진단, 증상, 처방 등은 의학 상담 챗봇을 이용하라고 안내하세요.\n"
-)
-
-# 의학 상담 시스템 프롬프트 (공통)
-MEDICAL_SYSTEM_PROMPT = (
-    "You are a Korean medical AI assistant. "
-    "You MUST respond ONLY in Korean (한국어). "
-    "NEVER use Chinese (中文), Japanese (日本語), or any other language.\n\n"
-    "당신은 한국의 전문 의학 AI 어시스턴트입니다.\n"
-    "반드시 한국어로만 답변하세요. 중국어(中文), 일본어, 영어 등 다른 언어를 절대 사용하지 마세요.\n"
-    "한자(漢字)를 사용하지 마세요. 모든 내용을 한글로 작성하세요.\n\n"
-    "답변 형식:\n"
-    "1. **추천 진료과**를 가장 먼저 안내하세요 (예: 신경과, 내과, 정형외과 등).\n"
-    "2. 해당 진료과를 추천하는 이유를 간단히 설명하세요.\n"
-    "3. 증상에 따른 응급 상황 판단 기준을 안내하세요.\n"
-    "4. 아래 참고 자료가 있으면 이를 기반으로 답변하고, "
-    "없으면 일반 의학 지식으로 답변하되 '전문의 상담을 권장합니다'라고 안내하세요.\n\n"
-    "사용자 질문 처리 규칙:\n"
-    "1. 사용자 질문에는 철자 오류나 의학 용어 오타가 있을 수 있습니다.\n"
-    "2. 문맥을 기반으로 가장 가능성이 높은 올바른 의학 용어로 해석하여 답변하세요.\n"
-    "3. 특히 신체 부위, 질병명, 증상명, 진료과 관련 단어는 의학적으로 타당한 용어로 자동 보정하여 이해하세요.\n"
-    "4. 오타가 있더라도 이를 지적하거나 수정 내용을 설명하지 말고 자연스럽게 올바른 용어로 답변하세요.\n"
-)
 
 app = FastAPI(
     title="Python LLM Inference API",
@@ -87,13 +73,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS: Spring Boot 연동 시 허용 origin 제한
+# Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS: Spring Boot 연동 시 허용 origin 제한 (환경변수 CORS_ORIGINS으로 재정의 가능)
+_settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-    ],
+    allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -106,18 +95,70 @@ def root():
     return {"status": "ok", "message": "LLM Inference API"}
 
 
+@app.get("/metrics")
+def get_metrics():
+    """추론 메트릭 조회"""
+    return metrics.to_dict()
+
+
+@app.post("/typo/reload")
+async def typo_reload():
+    """오타 사전 DB에서 리로드"""
+    from typo_corrector import reload_typo_dict
+    await reload_typo_dict()
+    return {"status": "ok", "message": "Typo dictionary reloaded"}
+
+
+async def _check_mysql_health() -> bool:
+    """MySQL 연결 상태 확인"""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT 1")
+                return True
+    except Exception:
+        return False
+
+
+def _check_chromadb_health() -> bool:
+    """ChromaDB 연결 상태 확인"""
+    try:
+        from vector_store import get_chroma_client
+        client = get_chroma_client()
+        client.heartbeat()
+        return True
+    except Exception:
+        return False
+
+
 @app.get("/health")
 async def health():
-    """헬스체크 엔드포인트"""
+    """헬스체크 엔드포인트 — Ollama, MySQL, ChromaDB 상태 확인"""
     settings = get_settings()
-    result = {"status": "healthy", "llm_backend": settings.llm_backend}
 
+    checks = {}
+
+    # Ollama 체크
     if settings.llm_backend == "ollama":
         from ollama_service import check_ollama_health
+        checks["ollama"] = await check_ollama_health()
 
-        result["ollama_connected"] = await check_ollama_health()
+    # MySQL 체크
+    checks["mysql"] = await _check_mysql_health()
 
-    return result
+    # ChromaDB 체크
+    checks["chromadb"] = _check_chromadb_health()
+
+    all_healthy = all(checks.values())
+
+    from ollama_service import _breaker
+    return {
+        "status": "healthy" if all_healthy else "degraded",
+        "llm_backend": settings.llm_backend,
+        "checks": checks,
+        "circuit_breaker": _breaker.state,
+    }
 
 
 @app.exception_handler(TimeoutError)
@@ -148,6 +189,17 @@ def os_error_handler(request: Request, exc: OSError):
     return JSONResponse(status_code=503, content={"detail": "LLM 모델 로딩 실패"})
 
 
+@app.exception_handler(ServiceUnavailableError)
+def circuit_breaker_handler(request: Request, exc: ServiceUnavailableError):
+    """Circuit Breaker OPEN 시 503 반환"""
+    logger.warning("Circuit breaker rejected request: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc)},
+        headers={"Retry-After": "30"},
+    )
+
+
 @app.exception_handler(Exception)
 def general_exception_handler(request: Request, exc: Exception):
     """기타 예외 500 반환"""
@@ -156,7 +208,8 @@ def general_exception_handler(request: Request, exc: Exception):
 
 
 @app.post("/infer", response_model=InferResponse)
-async def infer(request: InferRequest) -> InferResponse:
+@limiter.limit("20/minute")
+async def infer(request: InferRequest, http_request: Request) -> InferResponse:
     """
     LLM 추론: 쿼리 입력 → 생성 응답 반환
     Spring Boot /api/llm/query 에서 호출
@@ -178,6 +231,7 @@ async def infer(request: InferRequest) -> InferResponse:
                 max_length=request.max_length,
                 temperature=request.temperature,
                 top_p=request.top_p or 1.0,
+                client=http_request.app.state.http_client,
             )
         else:
             from llm_service import generate
@@ -202,13 +256,15 @@ async def infer(request: InferRequest) -> InferResponse:
 
 
 @app.post("/infer/medical", response_model=InferResponse)
-async def infer_medical(request: InferRequest) -> InferResponse:
+@limiter.limit("10/minute")
+async def infer_medical(request: InferRequest, http_request: Request) -> InferResponse:
     """
     의학지식 데이터 기반 LLM 추론
     1. MySQL에서 관련 의학 데이터 실시간 조회
     2. 시스템 프롬프트 + 의학 컨텍스트 + 사용자 질문 조합
     3. Ollama Chat API 호출
     """
+    _start = _time.time()
     query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
     logger.info("Medical infer request: query=%s", repr(query_preview))
 
@@ -222,39 +278,41 @@ async def infer_medical(request: InferRequest) -> InferResponse:
     logger.info("Medical context: %d chars", len(medical_context))
 
     # (2) 프롬프트 조합
-    messages = [{"role": "system", "content": MEDICAL_SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": load_prompt("medical_system")}]
     if medical_context:
         messages.append({"role": "system", "content": medical_context})
+
+    # 대화 이력 포함 (최근 3턴 = 6 메시지 제한)
+    if request.history:
+        recent_history = request.history[-6:]  # 최근 3턴
+        for msg in recent_history:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
     messages.append({"role": "user", "content": corrected_query})
 
     # (3) Ollama Chat API 호출
-    payload = {
-        "model": settings.ollama_model,
-        "messages": messages,
-        "stream": False,
-        "options": {
-            "temperature": request.temperature,
-            "num_predict": request.max_length,
-            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"],
-        },
-    }
+    from ollama_service import chat_with_ollama
 
-    async with httpx.AsyncClient(timeout=float(settings.llm_infer_timeout_sec)) as client:
-        response = await client.post(
-            f"{settings.ollama_base_url}/api/chat",
-            json=payload,
-        )
-        response.raise_for_status()
-        result = response.json()
-        raw_text = result.get("message", {}).get("content", "")
-        generated_text = clean_llm_response(raw_text)
+    stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
+    raw_text = await chat_with_ollama(
+        messages=messages,
+        temperature=request.temperature,
+        max_length=request.max_length,
+        stop=stop_tokens,
+        client=http_request.app.state.http_client,
+    )
+    generated_text = clean_llm_response(raw_text)
 
+    _elapsed = (_time.time() - _start) * 1000
+    metrics.record_request(latency_ms=_elapsed, success=True, vector_hit=len(medical_context) > 0)
     logger.info("Medical infer response: length=%d", len(generated_text))
     return InferResponse(generated_text=generated_text)
 
 
 @app.post("/infer/medical/stream")
-async def infer_medical_stream(request: InferRequest):
+@limiter.limit("10/minute")
+async def infer_medical_stream(request: InferRequest, http_request: Request):
     """
     의학지식 기반 LLM 스트리밍 추론 (SSE)
     Ollama stream:true → Server-Sent Events로 토큰 단위 전송
@@ -268,45 +326,43 @@ async def infer_medical_stream(request: InferRequest):
     medical_context = await build_medical_context(corrected_query)
     logger.info("Medical context (stream): %d chars", len(medical_context))
 
-    messages = [{"role": "system", "content": MEDICAL_SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": load_prompt("medical_system")}]
     if medical_context:
         messages.append({"role": "system", "content": medical_context})
+
+    # 대화 이력 포함 (최근 3턴 = 6 메시지 제한)
+    if request.history:
+        recent_history = request.history[-6:]  # 최근 3턴
+        for msg in recent_history:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
     messages.append({"role": "user", "content": corrected_query})
 
-    payload = {
-        "model": settings.ollama_model,
-        "messages": messages,
-        "stream": True,
-        "options": {
-            "temperature": request.temperature,
-            "num_predict": request.max_length,
-            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"],
-        },
-    }
+    from ollama_service import chat_with_ollama_stream
+
+    stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
+    http_client = http_request.app.state.http_client
 
     async def generate_sse():
         try:
-            async with httpx.AsyncClient(timeout=float(settings.llm_infer_timeout_sec)) as client:
-                async with client.stream(
-                    "POST",
-                    f"{settings.ollama_base_url}/api/chat",
-                    json=payload,
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
-                        chunk = json.loads(line)
-                        raw_token = chunk.get("message", {}).get("content", "")
-                        if raw_token:
-                            # 특수 토큰 + 중국어/일본어 문자 실시간 제거
-                            token = SPECIAL_TOKEN_PATTERN.sub("", raw_token)
-                            token = NON_KOREAN_CJK_PATTERN.sub("", token)
-                            if token:
-                                data = json.dumps({"token": token}, ensure_ascii=False)
-                                yield f"data: {data}\n\n"
-                        if chunk.get("done", False):
-                            yield "data: [DONE]\n\n"
+            async for item in chat_with_ollama_stream(
+                messages=messages,
+                temperature=request.temperature,
+                max_length=request.max_length,
+                stop=stop_tokens,
+                client=http_client,
+            ):
+                if "token" in item:
+                    raw_token = item["token"]
+                    # 특수 토큰 + 중국어/일본어 문자 실시간 제거
+                    token = SPECIAL_TOKEN_PATTERN.sub("", raw_token)
+                    token = NON_KOREAN_CJK_PATTERN.sub("", token)
+                    if token:
+                        data = json.dumps({"token": token}, ensure_ascii=False)
+                        yield f"data: {data}\n\n"
+                if item.get("done"):
+                    yield "data: [DONE]\n\n"
         except Exception as exc:
             logger.error("Stream error: %s", exc)
             error_data = json.dumps({"error": str(exc)}, ensure_ascii=False)
@@ -324,11 +380,13 @@ async def infer_medical_stream(request: InferRequest):
 
 
 @app.post("/infer/rule", response_model=InferResponse)
-async def infer_rule(request: InferRequest) -> InferResponse:
+@limiter.limit("10/minute")
+async def infer_rule(request: InferRequest, http_request: Request) -> InferResponse:
     """
     병원 규칙 Q&A LLM 추론
     의사·간호사가 병원 내부 규칙(당직, 물품, 위생 등)에 대해 질의할 때 사용
     """
+    _start = _time.time()
     query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
     logger.info("Rule infer request: query=%s", repr(query_preview))
 
@@ -350,33 +408,77 @@ async def infer_rule(request: InferRequest) -> InferResponse:
         logger.info("Rule infer: no context found, returning fallback message")
         return InferResponse(generated_text=no_result_msg)
 
-    messages = [{"role": "system", "content": RULE_SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": load_prompt("rule_system")}]
     messages.append({"role": "system", "content": rule_context})
     messages.append({"role": "user", "content": corrected_query})
 
-    payload = {
-        "model": settings.ollama_model,
-        "messages": messages,
-        "stream": False,
-        "options": {
-            "temperature": request.temperature,
-            "num_predict": request.max_length,
-            "stop": ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"],
-        },
-    }
+    from ollama_service import chat_with_ollama
 
-    async with httpx.AsyncClient(timeout=float(settings.llm_infer_timeout_sec)) as client:
-        response = await client.post(
-            f"{settings.ollama_base_url}/api/chat",
-            json=payload,
-        )
-        response.raise_for_status()
-        result = response.json()
-        raw_text = result.get("message", {}).get("content", "")
-        generated_text = clean_llm_response(raw_text)
+    stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
+    raw_text = await chat_with_ollama(
+        messages=messages,
+        temperature=request.temperature,
+        max_length=request.max_length,
+        stop=stop_tokens,
+        client=http_request.app.state.http_client,
+    )
+    generated_text = clean_llm_response(raw_text)
 
+    _elapsed = (_time.time() - _start) * 1000
+    metrics.record_request(latency_ms=_elapsed, success=True, vector_hit=len(rule_context) > 0)
     logger.info("Rule infer response: length=%d", len(generated_text))
     return InferResponse(generated_text=generated_text)
+
+
+@app.post("/feedback", response_model=FeedbackResponse)
+@limiter.limit("10/minute")
+async def submit_feedback(request: FeedbackRequest, http_request: Request) -> FeedbackResponse:
+    """
+    LLM 응답 품질 피드백 저장
+    """
+    logger.info("Feedback received: score=%d, endpoint=%s", request.score, request.endpoint)
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO llm_feedback (session_id, query, response, score, comment, endpoint)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (request.session_id, request.query, request.response,
+                     request.score, request.comment, request.endpoint),
+                )
+            await conn.commit()
+        return FeedbackResponse()
+    except Exception as exc:
+        logger.error("Failed to save feedback: %s", exc)
+        return FeedbackResponse(status="error", message="피드백 저장에 실패했습니다")
+
+
+@app.get("/feedback/stats")
+async def feedback_stats():
+    """피드백 통계 조회"""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute("""
+                    SELECT
+                        endpoint,
+                        COUNT(*) as total,
+                        ROUND(AVG(score), 2) as avg_score,
+                        SUM(CASE WHEN score <= 2 THEN 1 ELSE 0 END) as low_count,
+                        SUM(CASE WHEN score >= 4 THEN 1 ELSE 0 END) as high_count
+                    FROM llm_feedback
+                    GROUP BY endpoint
+                """)
+                stats = await cur.fetchall()
+        return {"status": "ok", "stats": stats}
+    except Exception as exc:
+        logger.error("Failed to get feedback stats: %s", exc)
+        return {"status": "error", "message": str(exc)}
 
 
 if __name__ == "__main__":
