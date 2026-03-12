@@ -19,32 +19,32 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 
 ### 1. doctor (의사 정보)
 
-| 컬럼명 | 타입 | 제약조건 | 설명 |
-|--------|------|----------|------|
-| id | BIGINT | PK, AUTO_INCREMENT | 의사 고유 ID |
-| name | VARCHAR(50) | NOT NULL | 의사 이름 |
-| department | VARCHAR(50) | NOT NULL | 진료과 (예: 정형외과, 신경과) |
-| domain_id | INT | FK (medical_domain.domain_id) | 의료 도메인 참조 |
-| specialty | VARCHAR(100) | | 세부 전문 분야 (예: 척추외과, 관절외과) |
-| hospital | VARCHAR(100) | NOT NULL | 소속 병원명 |
-| phone | VARCHAR(20) | | 연락처 |
-| email | VARCHAR(255) | | 이메일 |
-| bio | TEXT | | 의사 소개 / 약력 |
-| is_active | BOOLEAN | NOT NULL, DEFAULT TRUE | 활동 상태 |
-| created_at | DATETIME | NOT NULL | 등록 일시 |
+| 컬럼명     | 타입         | 제약조건                      | 설명                                    |
+| ---------- | ------------ | ----------------------------- | --------------------------------------- |
+| id         | BIGINT       | PK, AUTO_INCREMENT            | 의사 고유 ID                            |
+| name       | VARCHAR(50)  | NOT NULL                      | 의사 이름                               |
+| department | VARCHAR(50)  | NOT NULL                      | 진료과 (예: 정형외과, 신경과)           |
+| domain_id  | INT          | FK (medical_domain.domain_id) | 의료 도메인 참조                        |
+| specialty  | VARCHAR(100) |                               | 세부 전문 분야 (예: 척추외과, 관절외과) |
+| hospital   | VARCHAR(100) | NOT NULL                      | 소속 병원명                             |
+| phone      | VARCHAR(20)  |                               | 연락처                                  |
+| email      | VARCHAR(255) |                               | 이메일                                  |
+| bio        | TEXT         |                               | 의사 소개 / 약력                        |
+| is_active  | BOOLEAN      | NOT NULL, DEFAULT TRUE        | 활동 상태                               |
+| created_at | DATETIME     | NOT NULL                      | 등록 일시                               |
 
 ### 2. doctor_schedule (의사 스케줄)
 
-| 컬럼명 | 타입 | 제약조건 | 설명 |
-|--------|------|----------|------|
-| id | BIGINT | PK, AUTO_INCREMENT | 스케줄 고유 ID |
-| doctor_id | BIGINT | FK (doctor.id), NOT NULL | 의사 참조 |
-| day_of_week | VARCHAR(10) | NOT NULL | 요일 (MON/TUE/WED/THU/FRI/SAT/SUN) |
-| start_time | TIME | NOT NULL | 진료 시작 시간 |
-| end_time | TIME | NOT NULL | 진료 종료 시간 |
-| max_patients | INT | DEFAULT 20 | 시간대별 최대 예약 수 |
-| is_available | BOOLEAN | NOT NULL, DEFAULT TRUE | 진료 가능 여부 |
-| note | VARCHAR(255) | | 비고 (예: 격주 진료, 오전만 등) |
+| 컬럼명       | 타입         | 제약조건                 | 설명                               |
+| ------------ | ------------ | ------------------------ | ---------------------------------- |
+| id           | BIGINT       | PK, AUTO_INCREMENT       | 스케줄 고유 ID                     |
+| doctor_id    | BIGINT       | FK (doctor.id), NOT NULL | 의사 참조                          |
+| day_of_week  | VARCHAR(10)  | NOT NULL                 | 요일 (MON/TUE/WED/THU/FRI/SAT/SUN) |
+| start_time   | TIME         | NOT NULL                 | 진료 시작 시간                     |
+| end_time     | TIME         | NOT NULL                 | 진료 종료 시간                     |
+| max_patients | INT          | DEFAULT 20               | 시간대별 최대 예약 수              |
+| is_available | BOOLEAN      | NOT NULL, DEFAULT TRUE   | 진료 가능 여부                     |
+| note         | VARCHAR(255) |                          | 비고 (예: 격주 진료, 오전만 등)    |
 
 ---
 
@@ -86,6 +86,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: 의사 정보를 저장할 `Doctor` 엔티티와 `DoctorRepository`를 생성합니다.
 
 **Workflow**:
+
 1. `com.sample.llm.entity` 패키지에 `Doctor.java` 엔티티를 생성합니다.
 2. `@ManyToOne`으로 `MedicalDomain`과 연관관계를 설정합니다.
 3. `com.sample.llm.repository` 패키지에 `DoctorRepository` 인터페이스를 생성합니다.
@@ -102,6 +103,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: 의사 스케줄을 저장할 `DoctorSchedule` 엔티티와 `DoctorScheduleRepository`를 생성합니다.
 
 **Workflow**:
+
 1. `com.sample.llm.entity` 패키지에 `DoctorSchedule.java` 엔티티를 생성합니다.
 2. `@ManyToOne`으로 `Doctor`와 연관관계를 설정합니다.
 3. `DoctorScheduleRepository` 인터페이스를 생성합니다.
@@ -118,6 +120,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: 의사 정보 및 LLM 통합 응답을 위한 DTO를 생성합니다.
 
 **Workflow**:
+
 1. `DoctorDto.java` — 의사 기본 정보 (id, name, department, specialty, hospital)
 2. `DoctorScheduleDto.java` — 스케줄 정보 (dayOfWeek, startTime, endTime, isAvailable)
 3. `DoctorWithScheduleDto.java` — 의사 정보 + 스케줄 목록 (의사 상세 조회용)
@@ -140,6 +143,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: 진료과 기반 의사 조회 서비스를 구현합니다.
 
 **Workflow**:
+
 1. `com.sample.llm.service` 패키지에 `DoctorService.java`를 생성합니다.
 2. 구현 메서드:
    - `findDoctorsByDepartment(String department)` — 진료과명으로 활동 중인 의사 목록 반환
@@ -155,6 +159,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: LLM 응답 텍스트에서 추천 진료과명을 추출하는 파서를 구현합니다.
 
 **Workflow**:
+
 1. `com.sample.llm.service` 패키지에 `LlmResponseParser.java`를 생성합니다.
 2. LLM 응답에서 진료과명을 추출하는 로직 구현:
    - 시스템 프롬프트 규칙에 따라 "**추천 진료과**:" 다음의 진료과명 파싱
@@ -171,6 +176,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: 기존 LLM 쿼리 API를 확장하여 의사 정보를 함께 반환하는 엔드포인트를 추가합니다.
 
 **Workflow**:
+
 1. `LlmController`에 새 엔드포인트 추가:
    - `POST /api/llm/query/medical` — 의료 상담 + 의사 추천 통합 API
 2. 처리 흐름:
@@ -186,6 +192,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **산출물**: `LlmController.java` 업데이트, 새 엔드포인트 동작 확인
 
 **API 응답 예시** (`POST /api/llm/query/medical`):
+
 ```json
 {
   "generatedText": "추천 진료과: 정형외과\n\n무릎 통증이 걸을 때 심해지는 증상은...",
@@ -217,6 +224,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: DataLoader에 샘플 의사/스케줄 데이터를 추가하고 단위 테스트를 작성합니다.
 
 **Workflow**:
+
 1. `DataLoader.java`에 샘플 의사 데이터 추가:
    - 주요 진료과(정형외과, 신경과, 내과, 피부과 등) 각 2~3명
    - 각 의사당 주간 스케줄 3~5건
@@ -234,6 +242,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 **요구사항**: LLM 상담 응답 화면에 추천 진료과 이유 및 의사 목록을 표시합니다.
 
 **Workflow**:
+
 1. 상담 결과 화면 구성:
    ```
    ┌─────────────────────────────────────────┐
@@ -265,24 +274,24 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 
 ## API 스펙 (신규)
 
-| 엔드포인트 | 메서드 | 설명 |
-|-----------|--------|------|
-| `/api/llm/query/medical` | POST | 의료 상담 + 추천 진료과 의사 목록 통합 반환 |
-| `/api/doctors?department={dept}` | GET | 진료과별 의사 목록 조회 |
-| `/api/doctors/{id}` | GET | 의사 상세 정보 + 스케줄 조회 |
-| `/api/doctors/{id}/schedules` | GET | 특정 의사의 스케줄 목록 조회 |
+| 엔드포인트                       | 메서드 | 설명                                        |
+| -------------------------------- | ------ | ------------------------------------------- |
+| `/api/llm/query/medical`         | POST   | 의료 상담 + 추천 진료과 의사 목록 통합 반환 |
+| `/api/doctors?department={dept}` | GET    | 진료과별 의사 목록 조회                     |
+| `/api/doctors/{id}`              | GET    | 의사 상세 정보 + 스케줄 조회                |
+| `/api/doctors/{id}/schedules`    | GET    | 특정 의사의 스케줄 목록 조회                |
 
 ---
 
 ## 우선순위
 
-| 단계 | 우선순위 | 설명 |
-|------|----------|------|
+| 단계     | 우선순위  | 설명                                       |
+| -------- | --------- | ------------------------------------------ |
 | Step 1~2 | P0 (필수) | 테이블/엔티티 생성 — 이후 모든 작업의 기반 |
-| Step 3~4 | P0 (필수) | DTO 및 서비스 — API 핵심 로직 |
-| Step 5~6 | P0 (필수) | LLM 연동 및 API — 핵심 기능 완성 |
-| Step 7 | P1 (권장) | 테스트 및 샘플 데이터 |
-| Step 8 | P1 (권장) | 프론트엔드 화면 |
+| Step 3~4 | P0 (필수) | DTO 및 서비스 — API 핵심 로직              |
+| Step 5~6 | P0 (필수) | LLM 연동 및 API — 핵심 기능 완성           |
+| Step 7   | P1 (권장) | 테스트 및 샘플 데이터                      |
+| Step 8   | P1 (권장) | 프론트엔드 화면                            |
 
 ---
 
@@ -292,6 +301,25 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 medical_domain ──1:N──→ doctor ──1:N──→ doctor_schedule
                           │
 medical_qa.department ←── doctor.department (논리적 매칭)
+```
+
+- `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
+- `doctor.department`와 `medical_qa.department`를 논리적으로 매칭하여 진료과 기반 검색
+- LLM 응답에서 추출한 진료과명으로 `doctor` 테이블을 조회하여 의사 목록 제공
+
+---
+
+## 기존 테이블 연동 관계
+
+```
+medical_domain ──1:N──→ doctor ──1:N──→ doctor_schedule
+                          │
+medical_qa.department ←── doctor.department (논리적 매칭)
+```
+
+- `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
+- `doctor.department`와 `medical_qa.department`를 논리적으로 매칭하여 진료과 기반 검색
+- LLM 응답에서 추출한 진료과명으로 `doctor` 테이블을 조회하여 의사 목록 제공매칭)
 ```
 
 - `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
