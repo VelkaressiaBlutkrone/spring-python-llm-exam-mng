@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     chroma_rule_collection: str = Field(default="medical_rules", description="병원규칙 ChromaDB 컬렉션명")
     vector_search_top_k: int = Field(default=3, ge=1, le=20, description="벡터 검색 상위 K건")
     use_vector_search: bool = Field(default=True, description="벡터 검색 사용 여부")
+    use_query_expansion: bool = Field(default=False, description="쿼리 확장 사용 여부")
+    use_reranking: bool = Field(default=False, description="Re-ranking 사용 여부")
 
     # MySQL (의학데이터 조회)
     mysql_host: str = Field(default="127.0.0.1", description="MySQL 호스트")
@@ -53,6 +55,9 @@ class Settings(BaseSettings):
     mysql_user: str = Field(default="root", description="MySQL 사용자")
     mysql_password: str = Field(default="rootpassword", description="MySQL 비밀번호")
     mysql_db: str = Field(default="llm_db", description="MySQL 데이터베이스명")
+
+    # CORS
+    cors_origins: str = Field(default="http://localhost:8080,http://127.0.0.1:8080", description="허용 CORS origins (콤마 구분)")
 
     # API 서버
     host: str = Field(default="0.0.0.0", description="서버 바인드 주소")

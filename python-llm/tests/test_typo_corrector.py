@@ -5,7 +5,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from typo_corrector import correct_typos, MEDICAL_TYPO_MAP
+from typo_corrector import correct_typos, _BUILTIN_TYPO_MAP
 
 
 class TestCorrectTypos:
@@ -49,7 +49,7 @@ class TestCorrectTypos:
 
     def test_typo_map_has_no_identity(self):
         """사전에 정상→정상 매핑이 없는지 확인"""
-        for k, v in MEDICAL_TYPO_MAP.items():
+        for k, v in _BUILTIN_TYPO_MAP.items():
             assert k != v, f"Identity mapping found: '{k}'→'{v}'"
 
     def test_brain_disease_typo(self):
@@ -57,3 +57,9 @@ class TestCorrectTypos:
 
     def test_allergy_typo(self):
         assert correct_typos("알러지 있어요") == "알레르기 있어요"
+
+    def test_abbreviation_conversion(self):
+        assert "MRI" in correct_typos("엠알아이 찍어야 하나요")
+
+    def test_ct_conversion(self):
+        assert "CT" in correct_typos("씨티 촬영하고 싶어요")

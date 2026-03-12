@@ -22,3 +22,6 @@ build/
 # 모델 캐시
 .cache/
 models/
+
+# 인덱싱 메타데이터
+.index_meta.json
