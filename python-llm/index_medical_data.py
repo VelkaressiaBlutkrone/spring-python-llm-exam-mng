@@ -89,13 +89,13 @@ def fetch_medical_content(settings, since: str | None = None) -> list[dict]:
         with conn.cursor() as cur:
             if since:
                 cur.execute(
-                    "SELECT c_id, source_spec, content, language FROM medical_content "
+                    "SELECT id, c_id, source_spec, content, language FROM medical_content "
                     "WHERE language = 'ko' AND (updated_at > %s OR created_at > %s)",
                     (since, since),
                 )
             else:
                 cur.execute(
-                    "SELECT c_id, source_spec, content, language FROM medical_content "
+                    "SELECT id, c_id, source_spec, content, language FROM medical_content "
                     "WHERE language = 'ko'"
                 )
             return cur.fetchall()
@@ -145,7 +145,7 @@ async def index_content_data(content_rows: list[dict]):
         chunks = chunk_text(content, chunk_size=800, overlap=200)
         for i, chunk in enumerate(chunks):
             all_chunks.append({
-                "id": f"content_{row['c_id']}_chunk_{i}",
+                "id": f"content_{row['id']}_chunk_{i}",
                 "text": chunk,
                 "metadata": {
                     "type": "content",
