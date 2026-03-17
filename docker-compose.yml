@@ -30,7 +30,13 @@ services:
       - ANONYMIZED_TELEMETRY=FALSE
     healthcheck:
       # curl 미포함 이미지 대비: Python으로 heartbeat 확인 (ChromaDB는 Python 기반)
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat', timeout=5)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat', timeout=5)",
+        ]
       interval: 15s
       timeout: 10s
       retries: 10
