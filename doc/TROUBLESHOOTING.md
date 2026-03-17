@@ -100,18 +100,36 @@
     - [증상](#증상-17)
     - [해결](#해결-14)
     - [교훈](#교훈-17)
+  - [19. ChromaDB Docker 컨테이너 unhealthy](#19-chromadb-docker-컨테이너-unhealthy)
+    - [증상](#증상-18)
+    - [원인](#원인-16)
+    - [해결](#해결-15)
+    - [교훈](#교훈-18)
+  - [20. MySQL llm-db InnoDB 데이터 손상](#20-mysql-llm-db-innodb-데이터-손상)
+    - [증상](#증상-19)
+    - [원인](#원인-17)
+    - [해결](#해결-16)
+    - [교훈](#교훈-19)
+  - [21. docker compose down -v 후에도 볼륨 미삭제](#21-docker-compose-down--v-후에도-볼륨-미삭제)
+    - [증상](#증상-20)
+    - [해결](#해결-17)
+  - [22. index\_medical\_data.py DuplicateIDError](#22-index_medical_datapy-duplicateiderror)
+    - [증상](#증상-21)
+    - [원인](#원인-18)
+    - [해결](#해결-18)
+  - [23. PowerShell에서 MySQL SQL 파일 리다이렉션 실패](#23-powershell에서-mysql-sql-파일-리다이렉션-실패)
+    - [증상](#증상-22)
+    - [해결](#해결-19)
+  - [24. MySQL "Using a password on the command line" 경고](#24-mysql-using-a-password-on-the-command-line-경고)
+    - [증상](#증상-23)
+    - [해결](#해결-20)
+  - [25. 병원 규칙 Q\&A 무조건 "등록되어 있지 않습니다" 응답](#25-병원-규칙-qa-무조건-등록되어-있지-않습니다-응답)
+    - [증상](#증상-24)
+    - [원인](#원인-19)
+    - [해결](#해결-21)
   - [부록: 개발 환경 관련 이슈](#부록-개발-환경-관련-이슈)
     - [Windows CRLF + Tab 들여쓰기](#windows-crlf--tab-들여쓰기)
     - [.gitignore 누락](#gitignore-누락)
-- [127.0.0.1 → 성공](#127001--성공)
-    - [교훈](#교훈-18)
-  - [18. Docker 데이터 C 드라이브 용량 부족](#18-docker-데이터-c-드라이브-용량-부족-1)
-    - [증상](#증상-18)
-    - [해결](#해결-15)
-    - [교훈](#교훈-19)
-  - [부록: 개발 환경 관련 이슈](#부록-개발-환경-관련-이슈-1)
-    - [Windows CRLF + Tab 들여쓰기](#windows-crlf--tab-들여쓰기-1)
-    - [.gitignore 누락](#gitignore-누락-1)
 
 ---
 
@@ -791,95 +809,140 @@ netsh advfirewall firewall add rule name="Docker-8080" dir=in action=allow proto
 
 ---
 
-## 부록: 개발 환경 관련 이슈
-
-### Windows CRLF + Tab 들여쓰기
-
-- 프로젝트 파일이 CRLF 줄바꿈 + Tab 들여쓰기 사용
-- 코드 편집 도구에서 공백/탭 혼용 시 diff가 깨지거나 Edit 실패
-- `cat -A` 명령으로 실제 들여쓰기 문자(탭 `^I` vs 공백)를 확인 후 편집
-
-### .gitignore 누락
-
-- `python-llm/chroma_data/` (ChromaDB 데이터)와 `__pycache__/` 가 .gitignore에 없어 불필요한 파일이 추적됨
-- `.gitignore`에 추가하여 해결:
-  ```
-  python-llm/chroma_data/
-  __pycache__/
-  *.pyc
-  ```
-
-# 127.0.0.1 → 성공
-
-await aiomysql.create_pool(host='127.0.0.1', port=3307, ...) # OK
-
-````
-
-### 교훈
-
-- Windows에서 Docker 컨테이너에 연결 시 `localhost` 대신 `127.0.0.1`을 명시적으로 사용
-- IPv6/IPv4 듀얼 스택 환경에서 `localhost` 해석은 OS마다 다를 수 있음
-
----
-
-## 17. Docker Desktop WSL2 외부 IP 접속 불가
+## 19. ChromaDB Docker 컨테이너 unhealthy
 
 ### 증상
 
-- `docker compose up` 후 `localhost:8080`은 정상 접속
-- 같은 PC에서 LAN IP(`192.168.0.73:8080`)로 접속하면 타임아웃
-- 다른 기기에서 `192.168.0.73:8080`은 정상 접속 가능
+- `docker compose up -d` 시 `container llm-chromadb is unhealthy` 오류
+- ChromaDB 의존 서비스(python-llm 등)가 기동되지 않음
 
 ### 원인
 
-- Docker Desktop WSL2 백엔드의 알려진 제한사항
-- WSL2는 localhost 포트 포워딩만 지원하며, 호스트의 LAN IP를 통한 루프백 접속은 지원하지 않음
-- `netsh interface portproxy`도 WSL2 환경에서는 동작하지 않음
+- ChromaDB Docker 이미지에 `curl`이 포함되지 않은 경우 healthcheck 실패
+- ChromaDB 기동에 60초 이상 소요되는데 healthcheck가 너무 빨리 시작됨
 
 ### 해결
 
-**방법 1: 같은 PC에서는 localhost 사용**
+- `docker-compose.yml`에서 healthcheck를 Python 기반으로 변경하고 `start_period` 추가
 
-- 이 PC: `http://localhost:8080/`
-- 다른 기기: `http://192.168.0.73:8080/`
-
-**방법 2: Docker Desktop Hyper-V 백엔드 전환**
-
-- Docker Desktop → Settings → General → "Use the WSL 2 based engine" 체크 해제
-- Hyper-V 모드에서는 LAN IP 접속 가능
-
-**방법 3: Windows 방화벽 포트 허용 (외부 기기 접속용)**
-
-```powershell
-# 관리자 PowerShell
-netsh advfirewall firewall add rule name="Docker-8080" dir=in action=allow protocol=TCP localport=8080
-````
+```yaml
+chromadb:
+  healthcheck:
+    test:
+      [
+        "CMD",
+        "python",
+        "-c",
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat', timeout=5)",
+      ]
+    interval: 15s
+    timeout: 10s
+    retries: 10
+    start_period: 60s
+```
 
 ### 교훈
 
-- Docker Desktop WSL2는 localhost 전용, 외부 접속은 방화벽 규칙 필요
-- 같은 PC에서 자기 LAN IP로 접속이 안 되는 것은 WSL2의 네트워킹 한계
-- 외부 기기 접속이 목적이라면 방화벽 허용만으로 충분
+- curl 미포함 이미지는 Python(ChromaDB 기반)으로 heartbeat 확인
+- `start_period`로 초기 기동 시간 여유 확보
 
 ---
 
-## 18. Docker 데이터 C 드라이브 용량 부족
+## 20. MySQL llm-db InnoDB 데이터 손상
 
 ### 증상
 
-- Docker 이미지/컨테이너가 C 드라이브에 저장되어 디스크 용량 부족
-- `C:\Users\<user>\AppData\Local\Docker\wsl\` 경로에 약 33GB 사용
+- `docker logs llm-db`에 `[ERROR] [MY-012960] [InnoDB] Cannot create redo log files because data files are corrupt` 오류
+
+### 원인
+
+- MySQL 초기화 중 컨테이너가 비정상 종료
+- redo log 파일 손상으로 InnoDB가 기동 불가
 
 ### 해결
 
-- Docker Desktop → Settings → Resources → Advanced → **Disk image location**
-- 경로를 `D:\DockerData` 등으로 변경 → Apply & Restart
-- Docker Desktop이 자동으로 기존 데이터를 새 경로로 이동
+1. `docker compose down -v` 후 `docker compose up -d`
+2. 볼륨이 남아 있으면 `docker volume rm spring_llm_sample_mng_llm_mysql_data` 수동 삭제
+3. [DATA_RESTORE_GUIDE.md](DATA_RESTORE_GUIDE.md) 참고하여 데이터 재적재
 
 ### 교훈
 
-- Docker Desktop 설치 후 초기에 데이터 경로를 여유 있는 드라이브로 설정하는 것을 권장
-- 수동 WSL export/import 방식보다 Docker Desktop 설정 변경이 안전하고 간편
+- MySQL 컨테이너는 `docker compose down`으로 정상 종료할 것
+
+---
+
+## 21. docker compose down -v 후에도 볼륨 미삭제
+
+### 증상
+
+- `docker compose down -v` 실행 후에도 데이터 손상 오류가 반복됨
+
+### 해결
+
+1. `docker volume ls`로 볼륨 확인
+2. `docker volume rm <볼륨명>` 수동 삭제
+3. Docker Desktop 재시작 또는 WSL2 사용 시 `wsl --shutdown` 후 재실행
+
+---
+
+## 22. index_medical_data.py DuplicateIDError
+
+### 증상
+
+- `chromadb.errors.DuplicateIDError: Expected IDs to be unique, found duplicates of: content_xxx_chunk_0`
+
+### 원인
+
+- `medical_content`에서 `c_id`가 여러 행에서 중복
+- 청크 ID `content_{c_id}_chunk_{i}`가 동일하게 생성됨
+
+### 해결
+
+- `index_medical_data.py`에서 청크 ID를 `row['id']`(PK) 기반으로 변경
+- `fetch_medical_content` SELECT에 `id` 컬럼 추가
+
+---
+
+## 23. PowerShell에서 MySQL SQL 파일 리다이렉션 실패
+
+### 증상
+
+- `docker exec ... < scripts/medical-tables.sql` 실행 시 `ParserError: The '<' operator is reserved for future use`
+
+### 해결
+
+```powershell
+Get-Content scripts/medical-tables.sql -Raw | docker exec -i llm-db mysql -uroot -prootpassword --default-character-set=utf8mb4 llm_db
+```
+
+---
+
+## 24. MySQL "Using a password on the command line" 경고
+
+### 증상
+
+- `mysql: [Warning] Using a password on the command line interface can be insecure.` 출력
+
+### 해결
+
+- 오류가 아님. 경고만 출력되며 SQL 실행은 정상 완료됨
+
+---
+
+## 25. 병원 규칙 Q&A 무조건 "등록되어 있지 않습니다" 응답
+
+### 증상
+
+- 병원 규칙 질의 시 유사 내용이 있어도 LLM 추론 없이 해당 안내 메시지만 출력
+
+### 원인
+
+- ChromaDB rule 컬렉션이 비어 있으면 `rule_context`가 빈 문자열
+- `app.py`에서 컨텍스트 없으면 LLM 호출 없이 바로 반환
+
+### 해결
+
+- `rule_context_service.py`에 MySQL `medical_rule` 테이블 폴백 검색 추가
 
 ---
 
@@ -896,19 +959,6 @@ netsh advfirewall firewall add rule name="Docker-8080" dir=in action=allow proto
 - `python-llm/chroma_data/` (ChromaDB 데이터)와 `__pycache__/` 가 .gitignore에 없어 불필요한 파일이 추적됨
 - `.gitignore`에 추가하여 해결:
 
-  ````
-  python-llm/chroma_data/
-  __pycache__/
-  *.pyc
-  ```thon-llm/chroma_data/` (ChromaDB 데이터)와 `__pycache__/` 가 .gitignore에 없어 불필요한 파일이 추적됨
-  ````
-
-- `.gitignore`에 추가하여 해결:
-
-  ```
-  python-llm/chroma_data/
-  __pycache__/
-  *.pyc
   ```
   python-llm/chroma_data/
   __pycache__/
