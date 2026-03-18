@@ -160,7 +160,7 @@
 ### Step 6: 통합 검증
 
 - [x] `LLM_BACKEND=vllm` 상태에서 4개 엔드포인트 모두 정상 동작
-- [ ] `LLM_BACKEND=ollama`로 변경 → 기존과 동일하게 동작 (롤백 확인)
+- [x] `LLM_BACKEND=ollama`로 변경 → 기존과 동일하게 동작 (롤백 확인)
 
 **Workflow**:
 
