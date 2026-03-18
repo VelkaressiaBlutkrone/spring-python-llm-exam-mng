@@ -50,7 +50,9 @@ services:
     ports:
       - "0.0.0.0:8000:8000"
     environment:
-      - LLM_BACKEND=ollama
+      - LLM_BACKEND=vllm
+      - VLLM_BASE_URL=http://192.168.0.22:8000
+      - VLLM_MODEL=qwen2.5-7b
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
@@ -72,8 +74,9 @@ services:
       dockerfile: Dockerfile
     container_name: llm-spring
     ports:
-      - "0.0.0.0:8080:8080"
+      - "0.0.0.0:8081:8081"
     environment:
+      - SERVER_PORT=8081
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/llm_db
       - SPRING_DATASOURCE_USERNAME=llm_admin
       - SPRING_DATASOURCE_PASSWORD=llm_password
