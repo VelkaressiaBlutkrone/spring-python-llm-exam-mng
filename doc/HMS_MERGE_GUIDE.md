@@ -8,17 +8,17 @@
 
 ## 1. 프로젝트 비교 요약
 
-| 구분 | spring_llm_sample_mng | HMS (dev) |
-|------|------------------------|-----------|
-| **패키지** | `com.sample.llm` | `com.smartclinic.hms` |
-| **엔트리** | `SpringLlmSampleMngApplication` | `HmsApplication` |
+| 구분            | spring_llm_sample_mng                                           | HMS (dev)                                                                 |
+| --------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **패키지**      | `com.sample.llm`                                                | `com.smartclinic.hms`                                                     |
+| **엔트리**      | `SpringLlmSampleMngApplication`                                 | `HmsApplication`                                                          |
 | **레이어 구조** | config, controller, dto, entity, repository, service, exception | config, common, domain, admin, staff, doctor, nurse, reservation, **llm** |
-| **Entity 위치** | `entity/` | `domain/` |
-| **LLM 백엔드** | Python FastAPI (Ollama) + WebClient | Claude API (RestClient) |
-| **DB** | MySQL only | H2 (dev) / MySQL (prod) |
-| **Security** | 없음 | Spring Security (4 ROLE) |
-| **View** | Vanilla SPA (static/) | Mustache SSR (templates/) |
-| **설정** | application.yml | application.properties + application-dev.properties |
+| **Entity 위치** | `entity/`                                                       | `domain/`                                                                 |
+| **LLM 백엔드**  | Python FastAPI (Ollama) + WebClient                             | Claude API (RestClient)                                                   |
+| **DB**          | MySQL only                                                      | H2 (dev) / MySQL (prod)                                                   |
+| **Security**    | 없음                                                            | Spring Security (4 ROLE)                                                  |
+| **View**        | Vanilla SPA (static/)                                           | Mustache SSR (templates/)                                                 |
+| **설정**        | application.yml                                                 | application.properties + application-dev.properties                       |
 
 ---
 
@@ -50,15 +50,15 @@ com.smartclinic.hms
 
 ### 2.2 spring_llm_sample_mng → HMS 매핑
 
-| 현재 (spring_llm_sample_mng) | 병합 후 (HMS) |
-|------------------------------|---------------|
-| `com.sample.llm.config.*` | `com.smartclinic.hms.config.*` |
-| `com.sample.llm.controller.*` | `com.smartclinic.hms.llm.controller.*` |
-| `com.sample.llm.dto.*` | `com.smartclinic.hms.llm.dto.*` |
-| `com.sample.llm.entity.*` | `com.smartclinic.hms.domain.*` |
+| 현재 (spring_llm_sample_mng)  | 병합 후 (HMS)                                        |
+| ----------------------------- | ---------------------------------------------------- |
+| `com.sample.llm.config.*`     | `com.smartclinic.hms.config.*`                       |
+| `com.sample.llm.controller.*` | `com.smartclinic.hms.llm.controller.*`               |
+| `com.sample.llm.dto.*`        | `com.smartclinic.hms.llm.dto.*`                      |
+| `com.sample.llm.entity.*`     | `com.smartclinic.hms.domain.*`                       |
 | `com.sample.llm.repository.*` | `com.smartclinic.hms.domain.*` (또는 llm.repository) |
-| `com.sample.llm.service.*` | `com.smartclinic.hms.llm.service.*` |
-| `com.sample.llm.exception.*` | `com.smartclinic.hms.common.exception.*` |
+| `com.sample.llm.service.*`    | `com.smartclinic.hms.llm.service.*`                  |
+| `com.sample.llm.exception.*`  | `com.smartclinic.hms.common.exception.*`             |
 
 ---
 
@@ -66,21 +66,21 @@ com.smartclinic.hms
 
 ### 3.1 중복·유사 Entity
 
-| spring_llm_sample_mng | HMS domain | 조치 |
-|-----------------------|------------|------|
-| `ChatHistory` (chatbot_history) | `ChatbotHistory` | **HMS 것 사용** — 구조 동일, `ChatbotHistory.create()` 팩토리 활용 |
-| `MedicalRule` (medical_rule) | `HospitalRule` (hospital_rule) | **테이블·스키마 정합 필요** — medical_rule vs hospital_rule, category 타입(String vs enum) |
-| `Staff` | `Staff` | **HMS 것 사용** — StaffRole enum 등 HMS 스키마 준수 |
-| `Doctor` | `Doctor` | **HMS 것 사용** — Department 연관 등 HMS 스키마 준수 |
+| spring_llm_sample_mng           | HMS domain                     | 조치                                                                                       |
+| ------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `ChatHistory` (chatbot_history) | `ChatbotHistory`               | **HMS 것 사용** — 구조 동일, `ChatbotHistory.create()` 팩토리 활용                         |
+| `MedicalRule` (medical_rule)    | `HospitalRule` (hospital_rule) | **테이블·스키마 정합 필요** — medical_rule vs hospital_rule, category 타입(String vs enum) |
+| `Staff`                         | `Staff`                        | **HMS 것 사용** — StaffRole enum 등 HMS 스키마 준수                                        |
+| `Doctor`                        | `Doctor`                       | **HMS 것 사용** — Department 연관 등 HMS 스키마 준수                                       |
 
 ### 3.2 spring_llm_sample_mng 전용 Entity (domain에 추가)
 
-| Entity | 테이블 | 비고 |
-|--------|--------|------|
-| `MedicalHistory` | medical_history | 의료 상담 이력 |
-| `MedicalContent` | medical_content | 의학 콘텐츠 |
-| `MedicalQa` | medical_qa | 의학 Q&A |
-| `MedicalDomain` | medical_domain | 진료 도메인 (의학 지식용) |
+| Entity           | 테이블           | 비고                                     |
+| ---------------- | ---------------- | ---------------------------------------- |
+| `MedicalHistory` | medical_history  | 의료 상담 이력                           |
+| `MedicalContent` | medical_content  | 의학 콘텐츠                              |
+| `MedicalQa`      | medical_qa       | 의학 Q&A                                 |
+| `MedicalDomain`  | medical_domain   | 진료 도메인 (의학 지식용)                |
 | `DoctorSchedule` | doctor_schedules | HMS Doctor와 연관 여부 확인 후 통합 검토 |
 
 ### 3.3 MedicalRule vs HospitalRule
@@ -88,9 +88,10 @@ com.smartclinic.hms
 - **spring_llm**: `medical_rule` — category(String), title, content, target, start_date, end_date
 - **HMS**: `hospital_rule` — category(enum HospitalRuleCategory), title, content, is_active, created_at, updated_at
 
-**옵션**  
-1. **HospitalRule 확장**: target, start_date, end_date 컬럼 추가 후 medical_rules.json 적재 로직 수정  
-2. **medical_rule 유지**: 별도 테이블로 두고 Python RAG는 medical_rule 사용, HMS 관리 화면은 hospital_rule 사용 (이중화)  
+**옵션**
+
+1. **HospitalRule 확장**: target, start_date, end_date 컬럼 추가 후 medical_rules.json 적재 로직 수정
+2. **medical_rule 유지**: 별도 테이블로 두고 Python RAG는 medical_rule 사용, HMS 관리 화면은 hospital_rule 사용 (이중화)
 3. **마이그레이션**: medical_rule → hospital_rule 스키마 통합 + HospitalRuleCategory 매핑
 
 ---
@@ -108,21 +109,21 @@ developmentOnly 'me.paulschwarz:springboot3-dotenv:5.1.0'              // .env �
 
 ### 4.2 HMS 기존 vs spring_llm_sample_mng
 
-| 항목 | HMS | spring_llm_sample_mng |
-|------|-----|------------------------|
-| webflux | ❌ | ✅ |
-| mysql-connector | ❌ (prod에서 추가 예정) | ✅ |
-| mustache | ✅ | ❌ |
-| security | ✅ | ❌ |
-| webmvc-test | ✅ | ✅ |
+| 항목            | HMS                     | spring_llm_sample_mng |
+| --------------- | ----------------------- | --------------------- |
+| webflux         | ❌                      | ✅                    |
+| mysql-connector | ❌ (prod에서 추가 예정) | ✅                    |
+| mustache        | ✅                      | ❌                    |
+| security        | ✅                      | ❌                    |
+| webmvc-test     | ✅                      | ✅                    |
 
 ---
 
 ## 5. 설정 파일
 
-### 5.1 application.properties / application-*.properties
+### 5.1 application.properties / application-\*.properties
 
-HMS는 `application.properties` + `application-dev.properties` 사용.  
+HMS는 `application.properties` + `application-dev.properties` 사용.
 LLM 관련 설정은 `application-dev.properties` 또는 `application-prod.properties`에 추가:
 
 ```properties
@@ -149,23 +150,24 @@ spring.datasource.password=${MYSQL_PASSWORD:llm_password}
 
 ### 6.1 경로 정렬 옵션
 
-| 현재 (spring_llm) | HMS 스타일 제안 | 비고 |
-|-------------------|-----------------|------|
-| `POST /api/medical/query` | `POST /llm/medical/query` 또는 `POST /api/medical/query` | 프론트 연동 경로 유지 여부 결정 |
-| `POST /api/medical/medical-query` | 동일 또는 `/llm/medical/query`로 통합 | |
-| `GET /api/medical/stream/...` | `GET /llm/medical/stream/...` | SSE 스트리밍 |
-| `POST /api/chat/query` | `POST /llm/chatbot/ask` (HMS 기존) | ChatbotController와 통합 |
-| `GET /api/chat/history/{staffId}` | `GET /llm/chatbot/history/{staffId}` | |
+| 현재 (spring_llm)                 | HMS 스타일 제안                                          | 비고                            |
+| --------------------------------- | -------------------------------------------------------- | ------------------------------- |
+| `POST /api/medical/query`         | `POST /llm/medical/query` 또는 `POST /api/medical/query` | 프론트 연동 경로 유지 여부 결정 |
+| `POST /api/medical/medical-query` | 동일 또는 `/llm/medical/query`로 통합                    |                                 |
+| `GET /api/medical/stream/...`     | `GET /llm/medical/stream/...`                            | SSE 스트리밍                    |
+| `POST /api/chat/query`            | `POST /llm/chatbot/ask` (HMS 기존)                       | ChatbotController와 통합        |
+| `GET /api/chat/history/{staffId}` | `GET /llm/chatbot/history/{staffId}`                     |                                 |
 
 ### 6.2 HMS 기존 llm vs spring_llm_sample_mng
 
-| HMS llm (Claude) | spring_llm (Ollama/Python) |
-|------------------|----------------------------|
-| `POST /llm/symptom/analyze` | `POST /api/medical/query` (의료 상담) |
-| `POST /llm/chatbot/ask` | `POST /api/chat/query` (병원 규칙 Q&A) |
+| HMS llm (Claude)            | spring_llm (Ollama/Python)             |
+| --------------------------- | -------------------------------------- |
+| `POST /llm/symptom/analyze` | `POST /api/medical/query` (의료 상담)  |
+| `POST /llm/chatbot/ask`     | `POST /api/chat/query` (병원 규칙 Q&A) |
 
-**통합 전략**  
-- LlmService를 Python WebClient 호출로 교체하거나,  
+**통합 전략**
+
+- LlmService를 Python WebClient 호출로 교체하거나,
 - MedicalService/ChatService를 LlmService 내부에서 호출하는 방식으로 래핑
 
 ---
@@ -182,9 +184,10 @@ src/main/resources/static/
 └── (관련 JS/CSS)
 ```
 
-**옵션**  
-1. `static/`에 그대로 두고 `/` 등에서 서빙 (현재와 동일)  
-2. Mustache 템플릿으로 변환 후 `templates/doctor/`, `templates/nurse/` 등에 배치  
+**옵션**
+
+1. `static/`에 그대로 두고 `/` 등에서 서빙 (현재와 동일)
+2. Mustache 템플릿으로 변환 후 `templates/doctor/`, `templates/nurse/` 등에 배치
 3. doctor/nurse 화면에 iframe 또는 링크로 medical, chat 페이지 연결
 
 HMS는 Mustache SSR이므로, 장기적으로는 2번을 권장. 단기에는 1번으로 병합 후 점진 이전 가능.
@@ -247,6 +250,9 @@ HMS는 Mustache SSR이므로, 장기적으로는 2번을 권장. 단기에는 1�
 ## 10. 참고 링크
 
 - [HMS dev 브랜치](https://github.com/proejct-team-alpha/hms/tree/dev)
+- [HMS PACKAGE_STRUCTURE.md](https://github.com/proejct-team-alpha/hms/blob/dev/src/main/java/com/smartclinic/hms/PACKAGE_STRUCTURE.md)
+- [HMS llm FILES.md](https://github.com/proejct-team-alpha/hms/blob/dev/src/main/java/com/smartclinic/hms/llm/FILES.md)
+- [spring_llm_sample_mng README](../README.md)m-alpha/hms/tree/dev)
 - [HMS PACKAGE_STRUCTURE.md](https://github.com/proejct-team-alpha/hms/blob/dev/src/main/java/com/smartclinic/hms/PACKAGE_STRUCTURE.md)
 - [HMS llm FILES.md](https://github.com/proejct-team-alpha/hms/blob/dev/src/main/java/com/smartclinic/hms/llm/FILES.md)
 - [spring_llm_sample_mng README](../README.md)
