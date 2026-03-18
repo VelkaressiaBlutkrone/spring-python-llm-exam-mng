@@ -28,7 +28,7 @@ spring.mvc:
 
 server:
   address: 0.0.0.0
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:8081}
 
 logging:
   level:

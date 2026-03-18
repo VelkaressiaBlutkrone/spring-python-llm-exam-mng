@@ -19,9 +19,10 @@ Spring Boot + Python + MySQL + Ollama 기반의 의료 상담 LLM 시스템입�
 
 ## 프로젝트 구조
 
-```
+```text
 spring_llm_sample_mng/
 ├── src/main/java/com/sample/llm/
+│   ├── SpringLlmSampleMngApplication.java
 │   ├── config/
 │   │   ├── DataLoader.java              # 초기 시드 데이터 로딩
 │   │   └── WebClientConfig.java         # WebClient Bean 설정
@@ -29,29 +30,32 @@ spring_llm_sample_mng/
 │   │   ├── MedicalController.java       # 의료 상담 REST API (/api/medical/**)
 │   │   └── ChatController.java          # 병원 규칙 Q&A REST API (/api/chat/**)
 │   ├── dto/
-│   │   ├── DoctorDto.java               # 의사 정보 DTO
-│   │   ├── DoctorScheduleDto.java       # 의사 스케줄 DTO
-│   │   ├── DoctorWithScheduleDto.java   # 의사+스케줄 통합 DTO
+│   │   ├── DoctorDto.java, DoctorScheduleDto.java, DoctorWithScheduleDto.java
 │   │   ├── MedicalLlmResponse.java      # 의료상담 통합 응답 DTO
-│   │   ├── LlmRequest.java / LlmResponse.java
-│   │   ├── ChatHistoryResponse.java
-│   │   ├── MedicalHistoryResponse.java
-│   │   └── ErrorResponse.java           # 에러 응답 DTO
+│   │   ├── LlmRequest.java, LlmResponse.java
+│   │   ├── ChatHistoryResponse.java, MedicalHistoryResponse.java
+│   │   └── ErrorResponse.java
 │   ├── entity/
 │   │   ├── Staff.java                   # 직원 (의사/간호사)
-│   │   ├── Doctor.java / DoctorSchedule.java  # 의사 + 진료 스케줄
+│   │   ├── Doctor.java, DoctorSchedule.java
 │   │   ├── MedicalHistory.java          # 의료 상담 이력
 │   │   ├── ChatHistory.java             # 병원 규칙 Q&A 이력
-│   │   ├── MedicalQa.java / MedicalContent.java  # 의학 지식 데이터
-│   │   ├── MedicalDomain.java           # 진료 도메인
-│   │   └── MedicalRule.java             # 병원 규칙
+│   │   ├── MedicalQa.java, MedicalContent.java
+│   │   ├── MedicalDomain.java, MedicalRule.java
 │   ├── repository/                      # JPA Repository
+│   │   ├── MedicalHistoryRepository, ChatHistoryRepository
+│   │   ├── DoctorRepository, DoctorScheduleRepository
+│   │   ├── MedicalQaRepository, MedicalContentRepository
+│   │   ├── MedicalRuleRepository, StaffRepository, MedicalDomainRepository
 │   ├── service/
 │   │   ├── MedicalService.java          # 의료 상담 LLM 호출 + 이력 관리
 │   │   ├── ChatService.java             # 병원 규칙 Q&A LLM 호출 + 이력 저장
 │   │   ├── DoctorService.java           # 의사+스케줄 조회
-│   │   └── LlmResponseParser.java      # LLM 응답 파싱 (진료과 추출)
-│   └── exception/                       # 전역 예외 처리
+│   │   └── LlmResponseParser.java       # LLM 응답 파싱 (진료과 추출)
+│   └── exception/
+│       ├── GlobalExceptionHandler.java
+│       ├── LlmTimeoutException.java
+│       └── LlmServiceUnavailableException.java
 ├── src/main/resources/
 │   ├── application.yml
 │   └── static/
@@ -62,11 +66,12 @@ spring_llm_sample_mng/
 │   ├── app.py                           # FastAPI 앱 (엔드포인트 + 미들웨어)
 │   ├── ollama_service.py                # Ollama API 클라이언트 (generate/chat/stream)
 │   ├── medical_context_service.py       # 하이브리드 검색 (벡터 + FULLTEXT, asyncio.gather 병렬)
-│   ├── rule_context_service.py          # 병원 규칙 RAG 컨텍스트 서비스
+│   ├── rule_context_service.py          # 병원 규칙 RAG (벡터 + MySQL 폴백)
 │   ├── embedding_service.py             # Ollama 임베딩 + OrderedDict 캐시
 │   ├── vector_store.py                  # ChromaDB 벡터 저장소 (medical + rule 컬렉션)
+│   ├── import_medical_data.py            # llm_data ZIP → MySQL 적재
 │   ├── index_medical_data.py            # MySQL → ChromaDB 인덱싱 (증분 지원)
-│   ├── index_rule_data.py               # 병원 규칙 벡터 인덱싱
+│   ├── index_rule_data.py               # 병원 규칙 JSON → MySQL + ChromaDB 적재
 │   ├── config.py                        # 설정 관리 (Pydantic Settings)
 │   ├── schemas.py                       # 요청/응답 스키마 (Pydantic)
 │   ├── circuit_breaker.py               # Circuit Breaker 패턴 (장애 격리)
@@ -78,28 +83,50 @@ spring_llm_sample_mng/
 │   ├── response_cleaner.py              # LLM 응답 후처리 (CJK 필터링)
 │   ├── typo_corrector.py                # 의료 용어 오타 교정 (DB + 내장 사전)
 │   ├── llm_service.py                   # Hugging Face 백엔드 (폴백)
-│   ├── prompts/                         # 시스템 프롬프트 파일
-│   │   ├── medical_system.txt           # 의료 상담 시스템 프롬프트
+│   ├── prompts/
+│   │   ├── medical_system.txt            # 의료 상담 시스템 프롬프트
 │   │   └── rule_system.txt              # 병원 규칙 시스템 프롬프트
-│   ├── sql/                             # DB 마이그레이션 SQL
+│   ├── sql/
 │   │   ├── typo_dictionary.sql          # 오타 사전 테이블
 │   │   └── feedback_schema.sql          # 피드백 테이블
 │   ├── tests/                           # pytest 단위 테스트
-│   ├── requirements.txt                 # 프로덕션 의존성
-│   ├── requirements-dev.txt             # 개발/테스트 의존성
-│   └── Dockerfile                       # Python 서버 Docker 이미지
+│   ├── run.bat, run.sh                  # 실행 스크립트
+│   ├── requirements.txt, requirements-dev.txt
+│   ├── pyproject.toml
+│   └── Dockerfile
+├── llm_data/                            # 데이터 소스
+│   ├── medical_rules.json               # 병원 규칙 (200+건)
+│   ├── 08.전문 의학지식 데이터.zip      # 의학 Q&A/콘텐츠 (별도 확보)
+│   └── 09.필수의료 의학지식 데이터.zip
+├── scripts/                             # DB 마이그레이션·초기화
+│   ├── medical-tables.sql               # medical_domain, medical_content, medical_qa, medical_rule
+│   ├── init-mysql.sql                   # DB 초기 설정
+│   ├── erd-alignment-migration.sql
+│   ├── medical-chat-history-migration.sql
+│   ├── run-mysql-init.ps1
+│   └── check-mysql-password.ps1
 ├── doc/                                 # 프로젝트 문서
 │   ├── PRD.md                           # 제품 요구사항
 │   ├── ERD.md                           # 데이터베이스 설계
-│   ├── IMPROVEMENT_PYTHON_LLM.md        # Python LLM 개선 제안서 (22개 항목)
-│   ├── TASK_IMPROVEMENT_WORKFLOW.md     # 개선 작업 실행 계획
+│   ├── DATA_RESTORE_GUIDE.md            # llm_db 재설치 후 데이터 복원 가이드
 │   ├── TROUBLESHOOTING.md               # 트러블슈팅 가이드
 │   ├── SETUP_OLLAMA.md                  # Ollama 설치/연동 가이드
-│   ├── RULE_SPRING.md / RULE_PYTHON.md  # 개발 규칙
-│   └── TASK_*.md                        # 기능별 작업 문서
-├── docker-compose.yml                   # MySQL + ChromaDB 컨테이너
+│   ├── RULE_SPRING.md, RULE_PYTHON.md  # 개발 규칙
+│   ├── IMPROVEMENT_PYTHON_LLM.md        # Python LLM 개선 제안서
+│   ├── TASK_IMPROVEMENT_WORKFLOW.md     # 개선 작업 실행 계획
+│   ├── TASK_RAG_VECTOR_SEARCH.md        # RAG 벡터 검색 가이드
+│   ├── TASK_MEDICAL_RULE_RAG.md         # 병원 규칙 RAG
+│   ├── TASK_*.md                        # 기능별 작업 문서
+│   ├── ERD_ALIGNMENT.md, ERD_NON_STANDARD_TABLES.md
+│   ├── MVP_FEATURES.md, DAILY_REPORT_TEMPLATE.md
+├── .claude/                             # Claude 스킬 규칙
+│   ├── rules/common-rule.md
+│   └── skills/
+├── docker-compose.yml                   # MySQL + ChromaDB (+ python-llm, spring-app)
 ├── Dockerfile                           # Spring Boot Docker 이미지
-└── build.gradle
+├── build.gradle
+├── .env.example, .env
+└── .gitignore
 ```
 
 ## 실행 순서
@@ -494,6 +521,8 @@ python -m pytest tests/ -v --cov
 
 - [PRD (제품 요구사항)](doc/PRD.md)
 - [ERD (데이터베이스 설계)](doc/ERD.md)
+- [데이터 복원 가이드](doc/DATA_RESTORE_GUIDE.md) — llm_db 재설치 후 데이터 복원
+- [HMS 병합 가이드](doc/HMS_MERGE_GUIDE.md) — proejct-team-alpha/hms 프로젝트에 합칠 때 수정사항
 - [RAG 벡터 검색 가이드](doc/TASK_RAG_VECTOR_SEARCH.md)
 - [Python LLM 개선 제안서](doc/IMPROVEMENT_PYTHON_LLM.md)
 - [개선 작업 실행 계획](doc/TASK_IMPROVEMENT_WORKFLOW.md)

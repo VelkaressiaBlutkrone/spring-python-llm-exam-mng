@@ -1,6 +1,6 @@
 """
-Ollama LLM 서비스
-로컬 Ollama 서버를 통한 LLM 추론
+vLLM LLM 서비스
+OpenAI 호환 API를 통한 LLM 추론 (vLLM 서버)
 """
 
 import json
@@ -16,7 +16,7 @@ _breaker = CircuitBreaker(failure_threshold=5, reset_timeout=30.0)
 logger = logging.getLogger(__name__)
 
 
-async def generate_with_ollama(
+async def generate_with_vllm(
     query: str,
     model: str | None = None,
     max_length: int = 100,
@@ -25,11 +25,11 @@ async def generate_with_ollama(
     client: httpx.AsyncClient | None = None,
 ) -> str:
     """
-    Ollama /api/generate API를 통한 텍스트 생성
+    vLLM /v1/completions API를 통한 텍스트 생성
 
     Args:
         query: 입력 텍스트
-        model: Ollama 모델명 (None이면 설정값 사용)
+        model: vLLM 모델명 (None이면 설정값 사용)
         max_length: 최대 생성 토큰 수
         temperature: 생성 다양성
         top_p: nucleus sampling
@@ -41,39 +41,39 @@ async def generate_with_ollama(
     if not _breaker.can_execute():
         raise ServiceUnavailableError("LLM 서비스가 일시적으로 중단되었습니다. 잠시 후 다시 시도해 주세요.")
     settings = get_settings()
-    model = model or settings.ollama_model
+    model = model or settings.vllm_model
 
     payload = {
         "model": model,
         "prompt": query,
-        "stream": False,
-        "options": {
-            "num_predict": max_length,
-            "temperature": temperature,
-            "top_p": top_p,
-        },
+        "max_tokens": max_length,
+        "temperature": temperature,
+        "top_p": top_p,
     }
 
     async def _call(c: httpx.AsyncClient) -> str:
         try:
             response = await c.post(
-                f"{settings.ollama_base_url}/api/generate",
+                f"{settings.vllm_base_url}/v1/completions",
                 json=payload,
             )
             response.raise_for_status()
             result = response.json()
             _breaker.record_success()
-            return result.get("response", "")
+            choices = result.get("choices", [])
+            if choices:
+                return choices[0].get("text", "")
+            return ""
         except httpx.ConnectError:
-            logger.error("Ollama 서버 연결 실패: %s", settings.ollama_base_url)
+            logger.error("vLLM 서버 연결 실패: %s", settings.vllm_base_url)
             _breaker.record_failure()
             raise ConnectionError(
-                "Ollama 서버에 연결할 수 없습니다. ollama serve 실행 여부를 확인하세요."
+                "vLLM 서버에 연결할 수 없습니다. vLLM 서버 실행 여부를 확인하세요."
             )
         except httpx.ReadTimeout:
-            logger.warning("Ollama 추론 타임아웃")
+            logger.warning("vLLM 추론 타임아웃")
             _breaker.record_failure()
-            raise TimeoutError("Ollama 추론 타임아웃")
+            raise TimeoutError("vLLM 추론 타임아웃")
 
     if client is not None:
         return await _call(client)
@@ -88,7 +88,7 @@ async def generate_with_ollama(
         return await _call(_client)
 
 
-async def chat_with_ollama(
+async def chat_with_vllm(
     messages: list[dict],
     model: str | None = None,
     temperature: float = 0.7,
@@ -97,11 +97,11 @@ async def chat_with_ollama(
     client: httpx.AsyncClient | None = None,
 ) -> str:
     """
-    Ollama /api/chat API를 통한 대화형 생성
+    vLLM /v1/chat/completions API를 통한 대화형 생성
 
     Args:
         messages: [{"role": "user", "content": "..."}] 형식의 메시지 리스트
-        model: Ollama 모델명
+        model: vLLM 모델명
         temperature: 생성 다양성
         max_length: 최대 생성 토큰 수
         stop: 생성 중단 토큰 리스트
@@ -113,42 +113,40 @@ async def chat_with_ollama(
     if not _breaker.can_execute():
         raise ServiceUnavailableError("LLM 서비스가 일시적으로 중단되었습니다. 잠시 후 다시 시도해 주세요.")
     settings = get_settings()
-    model = model or settings.ollama_model
+    model = model or settings.vllm_model
 
-    options: dict = {
-        "temperature": temperature,
-        "num_predict": max_length,
-    }
-    if stop:
-        options["stop"] = stop
-
-    payload = {
+    payload: dict = {
         "model": model,
         "messages": messages,
-        "stream": False,
-        "options": options,
+        "temperature": temperature,
+        "max_tokens": max_length,
     }
+    if stop:
+        payload["stop"] = stop
 
     async def _call(c: httpx.AsyncClient) -> str:
         try:
             response = await c.post(
-                f"{settings.ollama_base_url}/api/chat",
+                f"{settings.vllm_base_url}/v1/chat/completions",
                 json=payload,
             )
             response.raise_for_status()
             result = response.json()
             _breaker.record_success()
-            return result.get("message", {}).get("content", "")
+            choices = result.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content", "")
+            return ""
         except httpx.ConnectError:
-            logger.error("Ollama 서버 연결 실패: %s", settings.ollama_base_url)
+            logger.error("vLLM 서버 연결 실패: %s", settings.vllm_base_url)
             _breaker.record_failure()
             raise ConnectionError(
-                "Ollama 서버에 연결할 수 없습니다. ollama serve 실행 여부를 확인하세요."
+                "vLLM 서버에 연결할 수 없습니다. vLLM 서버 실행 여부를 확인하세요."
             )
         except httpx.ReadTimeout:
-            logger.warning("Ollama Chat 추론 타임아웃")
+            logger.warning("vLLM Chat 추론 타임아웃")
             _breaker.record_failure()
-            raise TimeoutError("Ollama Chat 추론 타임아웃")
+            raise TimeoutError("vLLM Chat 추론 타임아웃")
 
     if client is not None:
         return await _call(client)
@@ -163,7 +161,7 @@ async def chat_with_ollama(
         return await _call(_client)
 
 
-async def chat_with_ollama_stream(
+async def chat_with_vllm_stream(
     messages: list[dict],
     model: str | None = None,
     temperature: float = 0.7,
@@ -172,15 +170,11 @@ async def chat_with_ollama_stream(
     client: httpx.AsyncClient | None = None,
 ):
     """
-    Ollama /api/chat 스트리밍 — 토큰 단위 AsyncGenerator
+    vLLM /v1/chat/completions 스트리밍 — 토큰 단위 AsyncGenerator
 
-    Args:
-        messages: 메시지 리스트
-        model: Ollama 모델명
-        temperature: 생성 다양성
-        max_length: 최대 생성 토큰 수
-        stop: 생성 중단 토큰 리스트
-        client: 공유 httpx 클라이언트 (None이면 자체 생성)
+    vLLM은 OpenAI SSE 형식을 사용:
+      data: {"choices":[{"delta":{"content":"토큰"}}]}
+      data: [DONE]
 
     Yields:
         dict — {"token": str} 또는 {"done": True}
@@ -189,51 +183,59 @@ async def chat_with_ollama_stream(
         raise ServiceUnavailableError("LLM 서비스가 일시적으로 중단되었습니다. 잠시 후 다시 시도해 주세요.")
 
     settings = get_settings()
-    model = model or settings.ollama_model
+    model = model or settings.vllm_model
 
-    options: dict = {
-        "temperature": temperature,
-        "num_predict": max_length,
-    }
-    if stop:
-        options["stop"] = stop
-
-    payload = {
+    payload: dict = {
         "model": model,
         "messages": messages,
         "stream": True,
-        "options": options,
+        "temperature": temperature,
+        "max_tokens": max_length,
     }
+    if stop:
+        payload["stop"] = stop
 
     async def _stream(c: httpx.AsyncClient):
         try:
             async with c.stream(
                 "POST",
-                f"{settings.ollama_base_url}/api/chat",
+                f"{settings.vllm_base_url}/v1/chat/completions",
                 json=payload,
             ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
-                    if not line.strip():
+                    line = line.strip()
+                    if not line:
                         continue
-                    chunk = json.loads(line)
-                    token = chunk.get("message", {}).get("content", "")
-                    done = chunk.get("done", False)
-                    if token:
-                        yield {"token": token}
-                    if done:
-                        _breaker.record_success()
-                        yield {"done": True}
+                    # SSE 형식: "data: {...}" 또는 "data: [DONE]"
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # "data: " 제거
+                        if data_str == "[DONE]":
+                            _breaker.record_success()
+                            yield {"done": True}
+                            return
+                        chunk = json.loads(data_str)
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            token = delta.get("content", "")
+                            finish_reason = choices[0].get("finish_reason")
+                            if token:
+                                yield {"token": token}
+                            if finish_reason is not None:
+                                _breaker.record_success()
+                                yield {"done": True}
+                                return
         except httpx.ConnectError:
-            logger.error("Ollama 서버 연결 실패: %s", settings.ollama_base_url)
+            logger.error("vLLM 서버 연결 실패: %s", settings.vllm_base_url)
             _breaker.record_failure()
             raise ConnectionError(
-                "Ollama 서버에 연결할 수 없습니다. ollama serve 실행 여부를 확인하세요."
+                "vLLM 서버에 연결할 수 없습니다. vLLM 서버 실행 여부를 확인하세요."
             )
         except httpx.ReadTimeout:
-            logger.warning("Ollama Stream 추론 타임아웃")
+            logger.warning("vLLM Stream 추론 타임아웃")
             _breaker.record_failure()
-            raise TimeoutError("Ollama Stream 추론 타임아웃")
+            raise TimeoutError("vLLM Stream 추론 타임아웃")
 
     if client is not None:
         async for item in _stream(client):
@@ -250,30 +252,33 @@ async def chat_with_ollama_stream(
                 yield item
 
 
-async def check_ollama_health(client: httpx.AsyncClient | None = None) -> bool:
-    """Ollama 서버 상태 확인"""
+async def check_vllm_health(client: httpx.AsyncClient | None = None) -> bool:
+    """vLLM 서버 상태 확인"""
     settings = get_settings()
     try:
         if client is not None:
-            response = await client.get(f"{settings.ollama_base_url}/api/tags")
+            response = await client.get(f"{settings.vllm_base_url}/health")
             return response.status_code == 200
         async with httpx.AsyncClient(timeout=3.0) as _client:
-            response = await _client.get(f"{settings.ollama_base_url}/api/tags")
+            response = await _client.get(f"{settings.vllm_base_url}/health")
             return response.status_code == 200
     except Exception:
         return False
 
 
 async def list_models(client: httpx.AsyncClient | None = None) -> list[str]:
-    """설치된 Ollama 모델 목록 조회"""
+    """vLLM 서버 모델 목록 조회"""
     settings = get_settings()
-    if client is not None:
-        response = await client.get(f"{settings.ollama_base_url}/api/tags")
-        response.raise_for_status()
-        data = response.json()
-        return [m["name"] for m in data.get("models", [])]
-    async with httpx.AsyncClient(timeout=5.0) as _client:
-        response = await _client.get(f"{settings.ollama_base_url}/api/tags")
-        response.raise_for_status()
-        data = response.json()
-        return [m["name"] for m in data.get("models", [])]
+    try:
+        if client is not None:
+            response = await client.get(f"{settings.vllm_base_url}/v1/models")
+            response.raise_for_status()
+            data = response.json()
+        else:
+            async with httpx.AsyncClient(timeout=5.0) as _client:
+                response = await _client.get(f"{settings.vllm_base_url}/v1/models")
+                response.raise_for_status()
+                data = response.json()
+        return [m["id"] for m in data.get("data", [])]
+    except Exception:
+        return []

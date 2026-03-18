@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 소스 복사
 COPY *.py ./
+COPY prompts/ ./prompts/
 
 EXPOSE 8000
 

@@ -15,8 +15,9 @@ services:
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 15
+      start_period: 90s
 
   chromadb:
     image: chromadb/chroma:1.5.4
@@ -29,7 +30,13 @@ services:
       - ANONYMIZED_TELEMETRY=FALSE
     healthcheck:
       # curl 미포함 이미지 대비: Python으로 heartbeat 확인 (ChromaDB는 Python 기반)
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat', timeout=5)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat', timeout=5)",
+        ]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -43,7 +50,9 @@ services:
     ports:
       - "0.0.0.0:8000:8000"
     environment:
-      - LLM_BACKEND=ollama
+      - LLM_BACKEND=vllm
+      - VLLM_BASE_URL=http://192.168.0.22:8000
+      - VLLM_MODEL=qwen2.5-7b
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
@@ -65,8 +74,9 @@ services:
       dockerfile: Dockerfile
     container_name: llm-spring
     ports:
-      - "0.0.0.0:8080:8080"
+      - "0.0.0.0:8081:8081"
     environment:
+      - SERVER_PORT=8081
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/llm_db
       - SPRING_DATASOURCE_USERNAME=llm_admin
       - SPRING_DATASOURCE_PASSWORD=llm_password

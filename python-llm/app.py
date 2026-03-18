@@ -22,7 +22,6 @@ from slowapi.errors import RateLimitExceeded
 from circuit_breaker import ServiceUnavailableError
 from metrics import metrics
 from config import get_settings
-from llm_service import generate
 from medical_context_service import build_medical_context, close_pool, get_pool
 from prompt_loader import load_prompt
 from response_cleaner import NON_KOREAN_CJK_PATTERN, SPECIAL_TOKEN_PATTERN, clean_llm_response
@@ -84,8 +83,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization", "X-Session-Id"],
 )
 
 
@@ -96,13 +95,15 @@ def root():
 
 
 @app.get("/metrics")
-def get_metrics():
+@limiter.limit("30/minute")
+def get_metrics(request: Request):
     """추론 메트릭 조회"""
     return metrics.to_dict()
 
 
 @app.post("/typo/reload")
-async def typo_reload():
+@limiter.limit("2/minute")
+async def typo_reload(request: Request):
     """오타 사전 DB에서 리로드"""
     from typo_corrector import reload_typo_dict
     await reload_typo_dict()
@@ -134,13 +135,16 @@ def _check_chromadb_health() -> bool:
 
 @app.get("/health")
 async def health():
-    """헬스체크 엔드포인트 — Ollama, MySQL, ChromaDB 상태 확인"""
+    """헬스체크 엔드포인트 — LLM 백엔드, MySQL, ChromaDB 상태 확인"""
     settings = get_settings()
 
     checks = {}
 
-    # Ollama 체크
-    if settings.llm_backend == "ollama":
+    # LLM 백엔드 체크
+    if settings.llm_backend == "vllm":
+        from vllm_service import check_vllm_health
+        checks["vllm"] = await check_vllm_health()
+    elif settings.llm_backend == "ollama":
         from ollama_service import check_ollama_health
         checks["ollama"] = await check_ollama_health()
 
@@ -152,7 +156,11 @@ async def health():
 
     all_healthy = all(checks.values())
 
-    from ollama_service import _breaker
+    # Circuit Breaker 상태
+    if settings.llm_backend == "vllm":
+        from vllm_service import _breaker
+    else:
+        from ollama_service import _breaker
     return {
         "status": "healthy" if all_healthy else "degraded",
         "llm_backend": settings.llm_backend,
@@ -165,7 +173,7 @@ async def health():
 def timeout_handler(request: Request, exc: TimeoutError):
     """추론 타임아웃 시 503 반환"""
     logger.warning("Request timeout: %s", exc)
-    return JSONResponse(status_code=503, content={"detail": str(exc)})
+    return JSONResponse(status_code=503, content={"detail": "요청 처리 시간이 초과되었습니다"})
 
 
 @app.exception_handler(MemoryError)
@@ -179,13 +187,24 @@ def memory_error_handler(request: Request, exc: MemoryError):
 def runtime_error_handler(request: Request, exc: RuntimeError):
     """모델/CUDA 오류 등 503 반환"""
     logger.error("Runtime error: %s", exc)
-    return JSONResponse(status_code=503, content={"detail": str(exc)})
+    return JSONResponse(status_code=503, content={"detail": "LLM 런타임 오류가 발생했습니다"})
+
+
+@app.exception_handler(ConnectionError)
+def connection_error_handler(request: Request, exc: ConnectionError):
+    """Ollama/외부 서버 연결 실패 시 503 반환"""
+    logger.error("Connection error: %s", exc)
+    detail = str(exc) if str(exc) else "LLM 서버에 연결할 수 없습니다. 서버 실행 여부를 확인하세요."
+    return JSONResponse(status_code=503, content={"detail": detail})
 
 
 @app.exception_handler(OSError)
 def os_error_handler(request: Request, exc: OSError):
     """모델 로딩 실패(DLL 등) 503 반환"""
     logger.error("OS error: %s", exc)
+    if isinstance(exc, ConnectionError):
+        detail = str(exc) if str(exc) else "LLM 서버에 연결할 수 없습니다. 서버 실행 여부를 확인하세요."
+        return JSONResponse(status_code=503, content={"detail": detail})
     return JSONResponse(status_code=503, content={"detail": "LLM 모델 로딩 실패"})
 
 
@@ -209,39 +228,51 @@ def general_exception_handler(request: Request, exc: Exception):
 
 @app.post("/infer", response_model=InferResponse)
 @limiter.limit("20/minute")
-async def infer(request: InferRequest, http_request: Request) -> InferResponse:
+async def infer(request: Request, body: InferRequest) -> InferResponse:
     """
     LLM 추론: 쿼리 입력 → 생성 응답 반환
     Spring Boot /api/llm/query 에서 호출
     LLM_BACKEND=ollama 시 Ollama 서버, 아니면 Hugging Face 사용
     """
-    query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
+    _start = _time.time()
+    query_preview = body.query[:50] + "..." if len(body.query) > 50 else body.query
     logger.info("Infer request: query=%s", repr(query_preview))
 
     settings = get_settings()
 
-    corrected = correct_typos(request.query)
+    corrected = correct_typos(body.query)
 
     try:
-        if settings.llm_backend == "ollama":
+        if settings.llm_backend == "vllm":
+            from vllm_service import generate_with_vllm
+
+            generated_text = await generate_with_vllm(
+                query=corrected,
+                max_length=body.max_length,
+                temperature=body.temperature,
+                top_p=body.top_p or 1.0,
+                client=request.app.state.http_client,
+            )
+        elif settings.llm_backend == "ollama":
             from ollama_service import generate_with_ollama
 
             generated_text = await generate_with_ollama(
                 query=corrected,
-                max_length=request.max_length,
-                temperature=request.temperature,
-                top_p=request.top_p or 1.0,
-                client=http_request.app.state.http_client,
+                max_length=body.max_length,
+                temperature=body.temperature,
+                top_p=body.top_p or 1.0,
+                client=request.app.state.http_client,
             )
         else:
+            # ollama (default fallback)
             from llm_service import generate
 
             generated_text = generate(
                 query=corrected,
-                max_length=request.max_length,
-                temperature=request.temperature,
-                top_p=request.top_p or 1.0,
-                num_return_sequences=request.num_return_sequences,
+                max_length=body.max_length,
+                temperature=body.temperature,
+                top_p=body.top_p or 1.0,
+                num_return_sequences=body.num_return_sequences,
             )
     except Exception as exc:
         fallback = settings.llm_fallback_response
@@ -251,13 +282,15 @@ async def infer(request: InferRequest, http_request: Request) -> InferResponse:
         else:
             raise
 
+    _elapsed = (_time.time() - _start) * 1000
+    metrics.record_request(latency_ms=_elapsed, success=True)
     logger.info("Infer response: length=%d", len(generated_text))
     return InferResponse(generated_text=generated_text)
 
 
 @app.post("/infer/medical", response_model=InferResponse)
 @limiter.limit("10/minute")
-async def infer_medical(request: InferRequest, http_request: Request) -> InferResponse:
+async def infer_medical(request: Request, body: InferRequest) -> InferResponse:
     """
     의학지식 데이터 기반 LLM 추론
     1. MySQL에서 관련 의학 데이터 실시간 조회
@@ -265,13 +298,13 @@ async def infer_medical(request: InferRequest, http_request: Request) -> InferRe
     3. Ollama Chat API 호출
     """
     _start = _time.time()
-    query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
+    query_preview = body.query[:50] + "..." if len(body.query) > 50 else body.query
     logger.info("Medical infer request: query=%s", repr(query_preview))
 
     settings = get_settings()
 
     # (0) 오타 교정
-    corrected_query = correct_typos(request.query)
+    corrected_query = correct_typos(body.query)
 
     # (1) 의학 컨텍스트 조회
     medical_context = await build_medical_context(corrected_query)
@@ -283,25 +316,36 @@ async def infer_medical(request: InferRequest, http_request: Request) -> InferRe
         messages.append({"role": "system", "content": medical_context})
 
     # 대화 이력 포함 (최근 3턴 = 6 메시지 제한)
-    if request.history:
-        recent_history = request.history[-6:]  # 최근 3턴
+    if body.history:
+        recent_history = body.history[-6:]  # 최근 3턴
         for msg in recent_history:
             if msg.get("role") in ("user", "assistant") and msg.get("content"):
                 messages.append({"role": msg["role"], "content": msg["content"]})
 
     messages.append({"role": "user", "content": corrected_query})
 
-    # (3) Ollama Chat API 호출
-    from ollama_service import chat_with_ollama
-
+    # (3) LLM Chat API 호출 (vLLM 또는 Ollama)
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
-    raw_text = await chat_with_ollama(
-        messages=messages,
-        temperature=request.temperature,
-        max_length=request.max_length,
-        stop=stop_tokens,
-        client=http_request.app.state.http_client,
-    )
+
+    if settings.llm_backend == "vllm":
+        from vllm_service import chat_with_vllm
+        raw_text = await chat_with_vllm(
+            messages=messages,
+            temperature=body.temperature,
+            max_length=body.max_length,
+            stop=stop_tokens,
+            client=request.app.state.http_client,
+        )
+    else:
+        # ollama (default fallback)
+        from ollama_service import chat_with_ollama
+        raw_text = await chat_with_ollama(
+            messages=messages,
+            temperature=body.temperature,
+            max_length=body.max_length,
+            stop=stop_tokens,
+            client=request.app.state.http_client,
+        )
     generated_text = clean_llm_response(raw_text)
 
     _elapsed = (_time.time() - _start) * 1000
@@ -312,17 +356,17 @@ async def infer_medical(request: InferRequest, http_request: Request) -> InferRe
 
 @app.post("/infer/medical/stream")
 @limiter.limit("10/minute")
-async def infer_medical_stream(request: InferRequest, http_request: Request):
+async def infer_medical_stream(request: Request, body: InferRequest):
     """
     의학지식 기반 LLM 스트리밍 추론 (SSE)
     Ollama stream:true → Server-Sent Events로 토큰 단위 전송
     """
-    query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
+    query_preview = body.query[:50] + "..." if len(body.query) > 50 else body.query
     logger.info("Medical stream request: query=%s", repr(query_preview))
 
     settings = get_settings()
 
-    corrected_query = correct_typos(request.query)
+    corrected_query = correct_typos(body.query)
     medical_context = await build_medical_context(corrected_query)
     logger.info("Medical context (stream): %d chars", len(medical_context))
 
@@ -331,25 +375,29 @@ async def infer_medical_stream(request: InferRequest, http_request: Request):
         messages.append({"role": "system", "content": medical_context})
 
     # 대화 이력 포함 (최근 3턴 = 6 메시지 제한)
-    if request.history:
-        recent_history = request.history[-6:]  # 최근 3턴
+    if body.history:
+        recent_history = body.history[-6:]  # 최근 3턴
         for msg in recent_history:
             if msg.get("role") in ("user", "assistant") and msg.get("content"):
                 messages.append({"role": msg["role"], "content": msg["content"]})
 
     messages.append({"role": "user", "content": corrected_query})
 
-    from ollama_service import chat_with_ollama_stream
-
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
-    http_client = http_request.app.state.http_client
+    http_client = request.app.state.http_client
+
+    if settings.llm_backend == "vllm":
+        from vllm_service import chat_with_vllm_stream as _chat_stream
+    else:
+        # ollama (default fallback)
+        from ollama_service import chat_with_ollama_stream as _chat_stream
 
     async def generate_sse():
         try:
-            async for item in chat_with_ollama_stream(
+            async for item in _chat_stream(
                 messages=messages,
-                temperature=request.temperature,
-                max_length=request.max_length,
+                temperature=body.temperature,
+                max_length=body.max_length,
                 stop=stop_tokens,
                 client=http_client,
             ):
@@ -381,19 +429,21 @@ async def infer_medical_stream(request: InferRequest, http_request: Request):
 
 @app.post("/infer/rule", response_model=InferResponse)
 @limiter.limit("10/minute")
-async def infer_rule(request: InferRequest, http_request: Request) -> InferResponse:
+async def infer_rule(request: Request, body: InferRequest) -> InferResponse:
     """
     병원 규칙 Q&A LLM 추론
     의사·간호사가 병원 내부 규칙(당직, 물품, 위생 등)에 대해 질의할 때 사용
     """
     _start = _time.time()
-    query_preview = request.query[:50] + "..." if len(request.query) > 50 else request.query
+    query_preview = body.query[:50] + "..." if len(body.query) > 50 else body.query
     logger.info("Rule infer request: query=%s", repr(query_preview))
 
     settings = get_settings()
-    corrected_query = correct_typos(request.query)
+    corrected_query = correct_typos(body.query)
+    if corrected_query != body.query:
+        logger.info("Rule query typo corrected: '%s' -> '%s'", body.query, corrected_query)
 
-    # RAG: ChromaDB에서 관련 병원규칙 검색하여 컨텍스트 주입
+    # RAG: ChromaDB + MySQL 하이브리드 검색으로 병원규칙 컨텍스트 주입
     rule_context = ""
     try:
         from rule_context_service import build_rule_context
@@ -405,6 +455,12 @@ async def infer_rule(request: InferRequest, http_request: Request) -> InferRespo
     # 검색 결과가 없으면 LLM 호출 없이 안내 메시지 반환
     if not rule_context:
         no_result_msg = "해당 내용이 등록되어 있지 않습니다. 관리자에게 문의 바랍니다."
+        # 오타 교정이 있었으면 교정 결과도 안내
+        if corrected_query != body.query:
+            no_result_msg = (
+                f"'{body.query}'을(를) '{corrected_query}'(으)로 검색했으나, "
+                "해당 내용이 등록되어 있지 않습니다. 관리자에게 문의 바랍니다."
+            )
         logger.info("Rule infer: no context found, returning fallback message")
         return InferResponse(generated_text=no_result_msg)
 
@@ -412,16 +468,27 @@ async def infer_rule(request: InferRequest, http_request: Request) -> InferRespo
     messages.append({"role": "system", "content": rule_context})
     messages.append({"role": "user", "content": corrected_query})
 
-    from ollama_service import chat_with_ollama
-
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
-    raw_text = await chat_with_ollama(
-        messages=messages,
-        temperature=request.temperature,
-        max_length=request.max_length,
-        stop=stop_tokens,
-        client=http_request.app.state.http_client,
-    )
+
+    if settings.llm_backend == "vllm":
+        from vllm_service import chat_with_vllm
+        raw_text = await chat_with_vllm(
+            messages=messages,
+            temperature=body.temperature,
+            max_length=body.max_length,
+            stop=stop_tokens,
+            client=request.app.state.http_client,
+        )
+    else:
+        # ollama (default fallback)
+        from ollama_service import chat_with_ollama
+        raw_text = await chat_with_ollama(
+            messages=messages,
+            temperature=body.temperature,
+            max_length=body.max_length,
+            stop=stop_tokens,
+            client=request.app.state.http_client,
+        )
     generated_text = clean_llm_response(raw_text)
 
     _elapsed = (_time.time() - _start) * 1000
@@ -432,11 +499,11 @@ async def infer_rule(request: InferRequest, http_request: Request) -> InferRespo
 
 @app.post("/feedback", response_model=FeedbackResponse)
 @limiter.limit("10/minute")
-async def submit_feedback(request: FeedbackRequest, http_request: Request) -> FeedbackResponse:
+async def submit_feedback(request: Request, body: FeedbackRequest) -> FeedbackResponse:
     """
     LLM 응답 품질 피드백 저장
     """
-    logger.info("Feedback received: score=%d, endpoint=%s", request.score, request.endpoint)
+    logger.info("Feedback received: score=%d, endpoint=%s", body.score, body.endpoint)
 
     try:
         pool = await get_pool()
@@ -447,14 +514,14 @@ async def submit_feedback(request: FeedbackRequest, http_request: Request) -> Fe
                     INSERT INTO llm_feedback (session_id, query, response, score, comment, endpoint)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (request.session_id, request.query, request.response,
-                     request.score, request.comment, request.endpoint),
+                    (body.session_id, body.query, body.response,
+                     body.score, body.comment, body.endpoint),
                 )
             await conn.commit()
         return FeedbackResponse()
     except Exception as exc:
         logger.error("Failed to save feedback: %s", exc)
-        return FeedbackResponse(status="error", message="피드백 저장에 실패했습니다")
+        return JSONResponse(status_code=500, content={"detail": "피드백 저장에 실패했습니다"})
 
 
 @app.get("/feedback/stats")
@@ -478,7 +545,7 @@ async def feedback_stats():
         return {"status": "ok", "stats": stats}
     except Exception as exc:
         logger.error("Failed to get feedback stats: %s", exc)
-        return {"status": "error", "message": str(exc)}
+        return JSONResponse(status_code=500, content={"detail": "통계 조회에 실패했습니다"})
 
 
 if __name__ == "__main__":

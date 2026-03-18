@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     )
 
     # LLM
-    llm_backend: str = Field(default="huggingface", description="LLM 백엔드 (huggingface | ollama)")
-    llm_model: str = Field(default="qwen2.5:7b", description="Hugging Face 모델명")
+    llm_backend: str = Field(default="vllm", description="LLM 백엔드 (huggingface | ollama | vllm)")
+    llm_model: str = Field(default="Qwen/Qwen2.5-7B-Instruct", description="Hugging Face 모델명")
     llm_fallback_mock: bool = Field(default=False, description="torch 미지원 시 mock 사용")
 
     @field_validator("llm_fallback_mock", mode="before")
@@ -34,10 +34,14 @@ class Settings(BaseSettings):
     llm_fallback_response: str = Field(default="", description="LLM 실패 시 반환할 기본 응답")
     medical_context_max_chars: int = Field(default=1500, ge=100, le=8000, description="의학 컨텍스트 최대 문자 수")
 
-    # Ollama
+    # Ollama (폴백 + 임베딩용)
     ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama 서버 URL")
     ollama_model: str = Field(default="qwen2.5:7b", description="Ollama 모델명")
     ollama_embed_model: str = Field(default="nomic-embed-text", description="Ollama 임베딩 모델명")
+
+    # vLLM (OpenAI 호환 API)
+    vllm_base_url: str = Field(default="http://localhost:8000", description="vLLM 서버 URL")
+    vllm_model: str = Field(default="qwen2.5-7b", description="vLLM 모델명")
 
     # ChromaDB (벡터 검색 - Docker HttpClient)
     chroma_host: str = Field(default="localhost", description="ChromaDB 서버 호스트")
@@ -53,7 +57,7 @@ class Settings(BaseSettings):
     mysql_host: str = Field(default="127.0.0.1", description="MySQL 호스트")
     mysql_port: int = Field(default=3307, ge=1, le=65535, description="MySQL 포트")
     mysql_user: str = Field(default="root", description="MySQL 사용자")
-    mysql_password: str = Field(default="rootpassword", description="MySQL 비밀번호")
+    mysql_password: str = Field(default="", description="MySQL 비밀번호 (환경변수 MYSQL_PASSWORD 필수)")
     mysql_db: str = Field(default="llm_db", description="MySQL 데이터베이스명")
 
     # CORS
@@ -62,9 +66,6 @@ class Settings(BaseSettings):
     # API 서버
     host: str = Field(default="0.0.0.0", description="서버 바인드 주소")
     port: int = Field(default=8000, ge=1, le=65535, description="서버 포트")
-
-    # OpenAI (선택, 향후 확장용)
-    openai_api_key: str = Field(default="", description="OpenAI API 키")
 
 
 @lru_cache

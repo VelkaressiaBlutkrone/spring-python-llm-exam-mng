@@ -27,19 +27,28 @@ async def expand_query(original: str, client=None) -> str:
         return original
 
     try:
-        from ollama_service import generate_with_ollama
-
         prompt = (
             f"사용자 질문: {original}\n"
             "이 질문과 관련된 의학 용어, 진료과, 증상, 질병명을 5개 나열하세요. "
             "콤마로 구분, 설명 없이 키워드만:"
         )
-        keywords = await generate_with_ollama(
-            query=prompt,
-            max_length=50,
-            temperature=0.3,
-            client=client,
-        )
+
+        if settings.llm_backend == "vllm":
+            from vllm_service import generate_with_vllm
+            keywords = await generate_with_vllm(
+                query=prompt,
+                max_length=50,
+                temperature=0.3,
+                client=client,
+            )
+        else:
+            from ollama_service import generate_with_ollama
+            keywords = await generate_with_ollama(
+                query=prompt,
+                max_length=50,
+                temperature=0.3,
+                client=client,
+            )
 
         expanded = f"{original} {keywords.strip()}"
         logger.info("Query expanded: '%s' → '%s'", original[:30], expanded[:80])

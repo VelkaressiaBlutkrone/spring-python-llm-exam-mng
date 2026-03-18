@@ -1,5 +1,6 @@
 -- 의학지식 데이터 테이블 DDL
--- 실행: docker exec -i llm-db mysql -uroot -prootpassword --default-character-set=utf8mb4 llm_db < scripts/medical-tables.sql
+-- PowerShell: Get-Content scripts/medical-tables.sql -Raw | docker exec -i llm-db mysql -uroot -prootpassword --default-character-set=utf8mb4 llm_db
+-- CMD/Bash:   docker exec -i llm-db mysql -uroot -prootpassword --default-character-set=utf8mb4 llm_db < scripts/medical-tables.sql
 
 USE llm_db;
 
@@ -17,7 +18,8 @@ INSERT IGNORE INTO medical_domain (domain_id, domain_name) VALUES
 (5, '비뇨의학과'), (6, '안과'), (7, '신경과'), (8, '신경외과'),
 (9, '종양내과'), (10, '병리과'), (11, '산부인과'),
 (12, '이비인후과'), (13, '정신건강의학과'), (14, '피부과'),
-(15, '예방의학'), (16, '의료법규'), (17, '소아청소년과'), (18, '응급의학과');
+(15, '예방의학'), (16, '의료법규'), (17, '소아청소년과'), (18, '응급의학과'),
+(19, '정형외과');
 
 -- 2. 원천데이터 (의학 지식 콘텐츠)
 CREATE TABLE IF NOT EXISTS medical_content (
@@ -58,4 +60,17 @@ CREATE TABLE IF NOT EXISTS medical_qa (
     INDEX idx_dataset (dataset),
     FULLTEXT INDEX ft_question (question) WITH PARSER ngram,
     FULLTEXT INDEX ft_answer (answer) WITH PARSER ngram
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4. 병원 규칙 (index_rule_data.py에서 medical_rules.json 적재)
+CREATE TABLE IF NOT EXISTS medical_rule (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    category    VARCHAR(50)  NOT NULL,
+    title       VARCHAR(200) NOT NULL,
+    content     LONGTEXT     NOT NULL,
+    target      VARCHAR(100) NULL,
+    start_date  DATE         NULL,
+    end_date    DATE         NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_category (category)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

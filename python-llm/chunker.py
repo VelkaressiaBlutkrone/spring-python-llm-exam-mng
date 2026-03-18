@@ -34,8 +34,8 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 200, min_chunk_s
             # 마지막 청크
             chunk = text[start:]
             if chunks and len(chunk) < min_chunk_size:
-                # 너무 짧으면 이전 청크에 합침
-                chunks[-1] = chunks[-1] + chunk[overlap:]
+                # 너무 짧으면 이전 청크에 합침 (오버랩은 start 계산에서 이미 반영됨)
+                chunks[-1] = chunks[-1] + chunk
             else:
                 chunks.append(chunk)
             break
