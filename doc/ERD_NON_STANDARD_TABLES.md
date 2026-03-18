@@ -125,4 +125,4 @@
 
 ---
 
-_ERD 문서: https://github.com/proejct-team-alpha/documents (02*ERD*문서)_)\*)\*)\*)*
+_ERD 문서: https://github.com/proejct-team-alpha/documents (02*ERD*문서)_)\*)\*)\*)\*)\*)\*)\*)*

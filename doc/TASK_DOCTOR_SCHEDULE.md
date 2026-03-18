@@ -320,6 +320,27 @@ medical_qa.department ←── doctor.department (논리적 매칭)
 - `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
 - `doctor.department`와 `medical_qa.department`를 논리적으로 매칭하여 진료과 기반 검색
 - LLM 응답에서 추출한 진료과명으로 `doctor` 테이블을 조회하여 의사 목록 제공매칭)
+
+````
+
+- `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
+- `doctor.department`와 `medical_qa.department`를 논리적으로 매칭하여 진료과 기반 검색
+- LLM 응답에서 추출한 진료과명으로 `doctor` 테이블을 조회하여 의사 목록 제공
+```매칭)
+
+````
+
+- `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
+- `doctor.department`와 `medical_qa.department`를 논리적으로 매칭하여 진료과 기반 검색
+- LLM 응답에서 추출한 진료과명으로 `doctor` 테이블을 조회하여 의사 목록 제공
+
+```
+
+- `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
+- `doctor.department`와 `medical_qa.department`를 논리적으로 매칭하여 진료과 기반 검색
+- LLM 응답에서 추출한 진료과명으로 `doctor` 테이블을 조회하여 의사 목록 제공
+```
+
 ```
 
 - `doctor.domain_id`로 `medical_domain`과 FK 연관 (진료 분야 분류)
