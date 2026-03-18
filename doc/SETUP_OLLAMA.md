@@ -1161,3 +1161,9 @@ ollama run hospital-finetuned "허리가 아프고 다리가 저린데 어디로
 | ---- | ---------- | ------ | ----------------------------------------------------------------------------- |
 | 1.0  | 2025-03-06 | -      | 최초 작성: Ollama 설치, 추천 모델, Python/Spring Boot 연동 가이드             |
 | 1.1  | 2025-03-06 | -      | RDB(MySQL) 데이터 활용 학습 방법 추가 (프롬프트 주입, Modelfile, Fine-tuning) |
+
+---
+
+## vLLM 대안
+vLLM을 사용하는 경우 `LLM_BACKEND=vllm` 환경변수를 설정하면 됩니다.
+자세한 내용은 [vLLM 전환 기획서](TASK_VLLM_MIGRATION.md)와 [WSL2 가이드](VLLM-QWEN2.5-7B-WSL2-GUIDE.md)를 참고하세요.

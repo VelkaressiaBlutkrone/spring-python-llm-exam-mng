@@ -1,5 +1,7 @@
 # Python LLM 서비스 개선 제안서
 
+> 2026-03-18 기준: 22개 Task 전체 구현 완료
+
 > 작성일: 2026-03-12
 > 대상: `python-llm/` 모듈 전체 및 Spring Boot LLM 연동 레이어
 

@@ -964,3 +964,16 @@ Get-Content scripts/medical-tables.sql -Raw | docker exec -i llm-db mysql -uroot
   __pycache__/
   *.pyc
   ```
+
+---
+
+## vLLM 관련
+
+### vLLM 서버 연결 실패
+- `VLLM_BASE_URL` 환경변수가 올바른 주소인지 확인
+- vLLM 서버가 실행 중인지 확인: `curl http://{VLLM_HOST}:{PORT}/health`
+- Docker 환경에서는 호스트 네트워크 접근 가능 여부 확인
+
+### vLLM에서 Ollama로 롤백
+- `LLM_BACKEND=ollama` 환경변수 설정 후 서버 재시작
+- Ollama 서버가 실행 중인지 확인: `ollama serve`

@@ -10,7 +10,8 @@ Spring Boot + Python + MySQL + Ollama 기반의 의료 상담 LLM 시스템입�
 | 백엔드        | Spring Boot 4.0.3, Java 21            |
 | 데이터베이스  | MySQL 8.0 (의학 데이터 + 챗 히스토리) |
 | LLM 서버      | Python 3.10+, FastAPI, Uvicorn        |
-| LLM 백엔드    | Ollama (qwen2.5:7b, 로컬 LLM)         |
+| LLM 백엔드    | vLLM (qwen2.5-7b, AWQ 4bit) + Ollama (폴백) |
+| LLM 전환      | LLM_BACKEND 환경변수로 vLLM/Ollama 즉시 전환 |
 | RAG/벡터 검색 | ChromaDB + Ollama nomic-embed-text    |
 | 비동기 호출   | Spring WebFlux (WebClient)            |
 | 스트리밍      | SSE (Server-Sent Events)              |
@@ -65,6 +66,7 @@ spring_llm_sample_mng/
 ├── python-llm/                          # Python LLM 추론 서버
 │   ├── app.py                           # FastAPI 앱 (엔드포인트 + 미들웨어)
 │   ├── ollama_service.py                # Ollama API 클라이언트 (generate/chat/stream)
+│   ├── vllm_service.py                # vLLM OpenAI 호환 API 클라이언트 (generate/chat/stream)
 │   ├── medical_context_service.py       # 하이브리드 검색 (벡터 + FULLTEXT, asyncio.gather 병렬)
 │   ├── rule_context_service.py          # 병원 규칙 RAG (벡터 + MySQL 폴백)
 │   ├── embedding_service.py             # Ollama 임베딩 + OrderedDict 캐시
@@ -118,7 +120,10 @@ spring_llm_sample_mng/
 │   ├── TASK_MEDICAL_RULE_RAG.md         # 병원 규칙 RAG
 │   ├── TASK_*.md                        # 기능별 작업 문서
 │   ├── ERD_ALIGNMENT.md, ERD_NON_STANDARD_TABLES.md
-│   ├── MVP_FEATURES.md, DAILY_REPORT_TEMPLATE.md
+│   ├── MVP_FEATURES.md
+│   ├── TASK_VLLM_MIGRATION.md         # Ollama→vLLM 전환 기획서
+│   ├── CODE_REVIEW_PYTHON_LLM.md      # Python LLM 코드 리뷰 리포트
+│   ├── VLLM-QWEN2.5-7B-WSL2-GUIDE.md # vLLM WSL2 설치 가이드
 ├── .claude/                             # Claude 스킬 규칙
 │   ├── rules/common-rule.md
 │   └── skills/
@@ -141,8 +146,17 @@ docker-compose up -d
 
 MySQL(포트 3307)과 ChromaDB(포트 8100)가 실행됩니다.
 
-### 2. Ollama 서버 실행
+### 2. LLM 백엔드 실행 (vLLM 또는 Ollama)
 
+#### vLLM 사용 시 (권장)
+별도 서버(192.168.0.22 등)에 vLLM이 구축되어 있다면 환경변수만 설정:
+```bash
+VLLM_BASE_URL=http://192.168.0.22:8000
+LLM_BACKEND=vllm
+```
+자세한 설정은 [vLLM WSL2 가이드](doc/VLLM-QWEN2.5-7B-WSL2-GUIDE.md)를 참고하세요.
+
+#### Ollama 사용 시 (폴백)
 Ollama를 설치하고 필요한 모델을 다운로드합니다.
 자세한 설정은 [Ollama 설치 가이드](doc/SETUP_OLLAMA.md)를 참고하세요.
 
@@ -195,14 +209,27 @@ python index_rule_data.py
 
 ### 5. Python LLM 서버 시작
 
-**Linux / Mac (bash)**
+**Linux / Mac (bash) — vLLM 기본**
+
+```bash
+LLM_BACKEND=vllm VLLM_BASE_URL=http://192.168.0.22:8000 \
+  uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Linux / Mac (bash) — Ollama 폴백**
 
 ```bash
 LLM_BACKEND=ollama OLLAMA_MODEL=qwen2.5:7b \
   uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**Windows PowerShell**
+**Windows PowerShell — vLLM 기본**
+
+```powershell
+$env:LLM_BACKEND="vllm"; $env:VLLM_BASE_URL="http://192.168.0.22:8000"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Windows PowerShell — Ollama 폴백**
 
 ```powershell
 $env:LLM_BACKEND="ollama"; $env:OLLAMA_MODEL="qwen2.5:7b"; uvicorn app:app --host 0.0.0.0 --port 8000 --reload
@@ -237,7 +264,9 @@ Spring Boot가 포트 `8080`에서 실행됩니다.
 
 | 변수                        | 기본값                   | 설명                                  |
 | --------------------------- | ------------------------ | ------------------------------------- |
-| `LLM_BACKEND`               | `huggingface`            | LLM 백엔드 (`huggingface` / `ollama`) |
+| `LLM_BACKEND`               | `vllm`                   | LLM 백엔드 (`huggingface` / `ollama` / `vllm`) |
+| `VLLM_BASE_URL`             | `http://localhost:8000`  | vLLM 서버 URL                         |
+| `VLLM_MODEL`                | `qwen2.5-7b`             | vLLM 모델명                           |
 | `OLLAMA_BASE_URL`           | `http://localhost:11434` | Ollama 서버 URL                       |
 | `OLLAMA_MODEL`              | `qwen2.5:7b`             | Ollama 추론 모델명                    |
 | `OLLAMA_EMBED_MODEL`        | `nomic-embed-text`       | Ollama 임베딩 모델명                  |
@@ -339,9 +368,9 @@ curl -X POST http://localhost:8080/api/chat/query \
 | `/infer/rule`          | POST   | 병원 규칙 RAG + Chat API     | 10/min     |
 | `/feedback`            | POST   | LLM 응답 품질 피드백 저장    | 10/min     |
 | `/feedback/stats`      | GET    | 피드백 통계 조회             | -          |
-| `/metrics`             | GET    | 추론 메트릭 조회             | -          |
+| `/metrics`             | GET    | 추론 메트릭 조회             | 30/min     |
 | `/health`              | GET    | 헬스체크 (Ollama/MySQL/ChromaDB) | -      |
-| `/typo/reload`         | POST   | 오타 사전 DB 리로드          | -          |
+| `/typo/reload`         | POST   | 오타 사전 DB 리로드          | 2/min      |
 
 ### 히스토리 조회
 
@@ -460,12 +489,14 @@ python -m pytest tests/ -v --cov
     └── LlmResponseParser (진료과 추출)
     ↓ WebClient
 [Python FastAPI :8000]
-    ├── /infer/medical         → 의학 컨텍스트 + Ollama Chat (동기)
-    ├── /infer/medical/stream  → 의학 컨텍스트 + Ollama Chat (SSE 스트리밍)
-    ├── /infer/rule            → 병원 규칙 RAG + Ollama Chat
+    ├── /infer/medical         → 의학 컨텍스트 + LLM Chat (동기)
+    ├── /infer/medical/stream  → 의학 컨텍스트 + LLM Chat (SSE 스트리밍)
+    ├── /infer/rule            → 병원 규칙 RAG + LLM Chat
     ├── /feedback              → LLM 응답 피드백 수집
     ├── /metrics               → 추론 메트릭 모니터링
-    ├── Circuit Breaker        → Ollama 장애 격리 (5회 실패 → 30초 차단)
+    ├── vllm_service         → vLLM OpenAI 호환 API (기본)
+    ├── ollama_service       → Ollama API (폴백)
+    ├── Circuit Breaker        → LLM 장애 격리 (5회 실패 → 30초 차단)
     ├── Rate Limiting          → slowapi (10~20/min)
     ├── medical_context_service → 하이브리드 검색 (asyncio.gather 병렬)
     │   ├── ChromaDB 벡터 검색 (의미 유사도, 우선)
@@ -476,8 +507,11 @@ python -m pytest tests/ -v --cov
     ├── response_cleaner → CJK 필터링 + 후처리
     └── typo_corrector   → 의료 용어 오타 교정 (DB + 내장 사전)
     ↓
+[vLLM :8000 (외부)]
+    └── qwen2.5-7b (AWQ 4bit) → LLM 추론 (기본)
+
 [Ollama :11434]
-    ├── qwen2.5:7b          → LLM 추론
+    ├── qwen2.5:7b          → LLM 추론 (폴백)
     └── nomic-embed-text   → 임베딩 (RAG 벡터 검색)
 
 [MySQL :3307]
@@ -530,4 +564,7 @@ python -m pytest tests/ -v --cov
 - [Spring Boot 개발 규칙](doc/RULE_SPRING.md)
 - [Python 개발 규칙](doc/RULE_PYTHON.md)
 - [Ollama 설치/연동 가이드](doc/SETUP_OLLAMA.md)
+- [vLLM 전환 기획서](doc/TASK_VLLM_MIGRATION.md)
+- [vLLM WSL2 설치 가이드](doc/VLLM-QWEN2.5-7B-WSL2-GUIDE.md)
+- [Python LLM 코드 리뷰](doc/CODE_REVIEW_PYTHON_LLM.md)
 - [Python LLM 모듈 README](python-llm/README.md)
