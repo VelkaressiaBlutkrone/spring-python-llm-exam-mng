@@ -3,6 +3,7 @@ Ollama LLM 서비스
 로컬 Ollama 서버를 통한 LLM 추론
 """
 
+import json
 import logging
 
 import httpx
@@ -186,8 +187,6 @@ async def chat_with_ollama_stream(
     """
     if not _breaker.can_execute():
         raise ServiceUnavailableError("LLM 서비스가 일시적으로 중단되었습니다. 잠시 후 다시 시도해 주세요.")
-
-    import json
 
     settings = get_settings()
     model = model or settings.ollama_model

@@ -15,7 +15,7 @@ class InferRequest(BaseModel):
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0, description="nucleus sampling (선택)")
     num_return_sequences: int = Field(default=1, ge=1, le=5, description="생성 시퀀스 수")
     session_id: str | None = Field(default=None, description="세션 ID (대화 이력 추적용)")
-    history: list[dict] | None = Field(default=None, description="이전 대화 이력 [{role, content}, ...]")
+    history: list[dict] | None = Field(default=None, max_length=20, description="이전 대화 이력 [{role, content}, ...], 최대 20개")
 
     model_config = {"json_schema_extra": {"examples": [{"query": "안녕하세요, 오늘 날씨는?"}]}}
 
@@ -37,7 +37,7 @@ class FeedbackRequest(BaseModel):
     response: str = Field(..., min_length=1, max_length=8192)
     score: int = Field(..., ge=1, le=5, description="만족도 (1-5)")
     comment: str | None = Field(default=None, max_length=1000)
-    endpoint: str = Field(default="medical", pattern="^(medical|rule|infer)$")
+    endpoint: str = Field(default="medical", pattern="^(medical|rule|infer|infer/medical|infer/rule)$")
 
 
 class FeedbackResponse(BaseModel):

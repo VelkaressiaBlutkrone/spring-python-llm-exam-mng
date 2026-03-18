@@ -208,7 +208,7 @@ async def build_medical_context(query: str, client=None) -> str:
         content_results = []
 
     # Re-ranking: 벡터 검색 결과 재정렬
-    if vector_results and len(vector_results) > 1:
+    if settings.use_reranking and vector_results and len(vector_results) > 1:
         from reranker import rerank_results
         vector_results = await rerank_results(
             query=search_query,

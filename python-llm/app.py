@@ -22,7 +22,6 @@ from slowapi.errors import RateLimitExceeded
 from circuit_breaker import ServiceUnavailableError
 from metrics import metrics
 from config import get_settings
-from llm_service import generate
 from medical_context_service import build_medical_context, close_pool, get_pool
 from prompt_loader import load_prompt
 from response_cleaner import NON_KOREAN_CJK_PATTERN, SPECIAL_TOKEN_PATTERN, clean_llm_response
@@ -96,13 +95,15 @@ def root():
 
 
 @app.get("/metrics")
-def get_metrics():
+@limiter.limit("30/minute")
+def get_metrics(request: Request):
     """추론 메트릭 조회"""
     return metrics.to_dict()
 
 
 @app.post("/typo/reload")
-async def typo_reload():
+@limiter.limit("2/minute")
+async def typo_reload(request: Request):
     """오타 사전 DB에서 리로드"""
     from typo_corrector import reload_typo_dict
     await reload_typo_dict()
@@ -172,7 +173,7 @@ async def health():
 def timeout_handler(request: Request, exc: TimeoutError):
     """추론 타임아웃 시 503 반환"""
     logger.warning("Request timeout: %s", exc)
-    return JSONResponse(status_code=503, content={"detail": str(exc)})
+    return JSONResponse(status_code=503, content={"detail": "요청 처리 시간이 초과되었습니다"})
 
 
 @app.exception_handler(MemoryError)
@@ -186,7 +187,7 @@ def memory_error_handler(request: Request, exc: MemoryError):
 def runtime_error_handler(request: Request, exc: RuntimeError):
     """모델/CUDA 오류 등 503 반환"""
     logger.error("Runtime error: %s", exc)
-    return JSONResponse(status_code=503, content={"detail": str(exc)})
+    return JSONResponse(status_code=503, content={"detail": "LLM 런타임 오류가 발생했습니다"})
 
 
 @app.exception_handler(ConnectionError)
@@ -201,6 +202,9 @@ def connection_error_handler(request: Request, exc: ConnectionError):
 def os_error_handler(request: Request, exc: OSError):
     """모델 로딩 실패(DLL 등) 503 반환"""
     logger.error("OS error: %s", exc)
+    if isinstance(exc, ConnectionError):
+        detail = str(exc) if str(exc) else "LLM 서버에 연결할 수 없습니다. 서버 실행 여부를 확인하세요."
+        return JSONResponse(status_code=503, content={"detail": detail})
     return JSONResponse(status_code=503, content={"detail": "LLM 모델 로딩 실패"})
 
 
@@ -230,6 +234,7 @@ async def infer(request: Request, body: InferRequest) -> InferResponse:
     Spring Boot /api/llm/query 에서 호출
     LLM_BACKEND=ollama 시 Ollama 서버, 아니면 Hugging Face 사용
     """
+    _start = _time.time()
     query_preview = body.query[:50] + "..." if len(body.query) > 50 else body.query
     logger.info("Infer request: query=%s", repr(query_preview))
 
@@ -259,6 +264,7 @@ async def infer(request: Request, body: InferRequest) -> InferResponse:
                 client=request.app.state.http_client,
             )
         else:
+            # ollama (default fallback)
             from llm_service import generate
 
             generated_text = generate(
@@ -276,6 +282,8 @@ async def infer(request: Request, body: InferRequest) -> InferResponse:
         else:
             raise
 
+    _elapsed = (_time.time() - _start) * 1000
+    metrics.record_request(latency_ms=_elapsed, success=True)
     logger.info("Infer response: length=%d", len(generated_text))
     return InferResponse(generated_text=generated_text)
 
@@ -329,6 +337,7 @@ async def infer_medical(request: Request, body: InferRequest) -> InferResponse:
             client=request.app.state.http_client,
         )
     else:
+        # ollama (default fallback)
         from ollama_service import chat_with_ollama
         raw_text = await chat_with_ollama(
             messages=messages,
@@ -380,6 +389,7 @@ async def infer_medical_stream(request: Request, body: InferRequest):
     if settings.llm_backend == "vllm":
         from vllm_service import chat_with_vllm_stream as _chat_stream
     else:
+        # ollama (default fallback)
         from ollama_service import chat_with_ollama_stream as _chat_stream
 
     async def generate_sse():
@@ -470,6 +480,7 @@ async def infer_rule(request: Request, body: InferRequest) -> InferResponse:
             client=request.app.state.http_client,
         )
     else:
+        # ollama (default fallback)
         from ollama_service import chat_with_ollama
         raw_text = await chat_with_ollama(
             messages=messages,

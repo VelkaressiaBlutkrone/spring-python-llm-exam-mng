@@ -51,6 +51,7 @@ def import_to_mysql(rules: list[dict], settings) -> list[dict]:
         cursorclass=pymysql.cursors.DictCursor,
     )
     inserted = []
+    skipped = 0
     try:
         with conn.cursor() as cur:
             for rule in rules:
@@ -62,8 +63,7 @@ def import_to_mysql(rules: list[dict], settings) -> list[dict]:
                 existing = cur.fetchone()
                 if existing:
                     logger.info("Skip duplicate: %s (id=%d)", rule["title"], existing["id"])
-                    rule["id"] = existing["id"]
-                    inserted.append(rule)
+                    skipped += 1
                     continue
 
                 cur.execute(
@@ -88,6 +88,7 @@ def import_to_mysql(rules: list[dict], settings) -> list[dict]:
     finally:
         conn.close()
 
+    logger.info("MySQL import: %d new, %d existing", len(inserted), skipped)
     return inserted
 
 

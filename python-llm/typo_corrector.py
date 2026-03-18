@@ -2,13 +2,11 @@
 의료 용어 오타 교정 모듈
 - DB에서 오타 사전 로드 (DB 사용 불가 시 내장 사전 폴백)
 - 주기적 리로드 지원
-- 교정 사용 시 hit_count 비동기 업데이트
 """
 
 import logging
 import re
 import time
-import threading
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +87,21 @@ _BUILTIN_TYPO_MAP: dict[str, str] = {
     "산부인괴": "산부인과",
     "소아괴": "소아과",
     "치괴": "치과",
+    # 병원 규칙 관련 오타
+    "위행": "위생",
+    "위셍": "위생",
+    "위쌩": "위생",
+    "당즉": "당직",
+    "당짂": "당직",
+    "물푸": "물품",
+    "물픔": "물품",
+    "비품": "비품",
+    "비푼": "비품",
+    "감렴": "감염",
+    "감연": "감염",
+    "격리해제": "격리 해제",
+    "응급처치": "응급 처치",
+    "소독규칙": "소독 규칙",
 }
 
 # 방어적 필터: key == value인 항목 제거
@@ -98,10 +111,6 @@ _BUILTIN_TYPO_MAP = {k: v for k, v in _BUILTIN_TYPO_MAP.items() if k != v}
 _active_map: dict[str, str] = dict(_BUILTIN_TYPO_MAP)
 _last_reload: float = 0.0
 _RELOAD_INTERVAL: float = 600.0  # 10분
-
-# hit_count 업데이트 큐
-_hit_queue: list[str] = []
-_hit_lock = threading.Lock()
 
 
 async def load_typo_dict_from_db() -> dict[str, str]:
@@ -140,30 +149,6 @@ async def _maybe_reload():
         await reload_typo_dict()
 
 
-async def _flush_hit_counts():
-    """큐에 쌓인 hit_count를 일괄 업데이트"""
-    global _hit_queue
-    with _hit_lock:
-        if not _hit_queue:
-            return
-        typos = list(_hit_queue)
-        _hit_queue.clear()
-
-    try:
-        from medical_context_service import get_pool
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                for typo in typos:
-                    await cur.execute(
-                        "UPDATE typo_dictionary SET hit_count = hit_count + 1 WHERE typo = %s",
-                        (typo,),
-                    )
-            await conn.commit()
-        logger.debug("Flushed %d hit counts", len(typos))
-    except Exception as exc:
-        logger.warning("Failed to flush hit counts: %s", exc)
-
 
 def correct_typos(text: str) -> str:
     """
@@ -183,8 +168,6 @@ def correct_typos(text: str) -> str:
             correct = _active_map[typo]
             corrected = corrected.replace(typo, correct)
             corrections.append(f"'{typo}'→'{correct}'")
-            with _hit_lock:
-                _hit_queue.append(typo)
 
     if corrections:
         logger.info("Typo corrected: %s", ", ".join(corrections))

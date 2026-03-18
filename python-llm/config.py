@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # LLM
     llm_backend: str = Field(default="vllm", description="LLM 백엔드 (huggingface | ollama | vllm)")
-    llm_model: str = Field(default="qwen2.5:7b", description="Hugging Face 모델명")
+    llm_model: str = Field(default="Qwen/Qwen2.5-7B-Instruct", description="Hugging Face 모델명")
     llm_fallback_mock: bool = Field(default=False, description="torch 미지원 시 mock 사용")
 
     @field_validator("llm_fallback_mock", mode="before")
@@ -66,9 +66,6 @@ class Settings(BaseSettings):
     # API 서버
     host: str = Field(default="0.0.0.0", description="서버 바인드 주소")
     port: int = Field(default=8000, ge=1, le=65535, description="서버 포트")
-
-    # OpenAI (선택, 향후 확장용)
-    openai_api_key: str = Field(default="", description="OpenAI API 키")
 
 
 @lru_cache

@@ -32,11 +32,25 @@ class CircuitBreaker:
             return self._state
 
     def can_execute(self) -> bool:
-        """요청 실행 가능 여부 확인"""
-        current_state = self.state
-        if current_state == "OPEN":
-            return False
-        return True
+        """요청 실행 가능 여부 확인
+        HALF_OPEN 진입 시 단일 프로브만 허용:
+        - timeout 경과한 OPEN → OPEN 유지(추가 차단) + True 반환(프로브 1개)
+        - 이미 HALF_OPEN → OPEN으로 전환(추가 차단) + True 반환
+        - CLOSED → True
+        프로브 성공 시 record_success()가 CLOSED로 복귀시킨다.
+        """
+        with self._lock:
+            if self._state == "OPEN":
+                if time.time() - self._last_failure_time > self.reset_timeout:
+                    # 프로브 1개 통과, 상태는 OPEN 유지하여 동시 추가 요청 차단
+                    # (record_success 호출 시 CLOSED로 복귀)
+                    return True
+                return False
+            if self._state == "HALF_OPEN":
+                # 동시 요청이 HALF_OPEN을 보고 들어오는 경우 차단
+                self._state = "OPEN"
+                return True
+            return True
 
     def record_success(self):
         """성공 기록 — CLOSED로 복귀"""
