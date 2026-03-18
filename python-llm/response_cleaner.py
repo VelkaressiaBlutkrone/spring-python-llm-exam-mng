@@ -24,6 +24,8 @@ NON_KOREAN_CJK_PATTERN = re.compile(
     r"\u30a0-\u30ff"    # 가타카나 (일본어)
     r"\u31f0-\u31ff"    # 가타카나 확장
     r"\uff66-\uff9f"    # 반각 가타카나
+    r"\u3000-\u303f"    # CJK 기호 및 구두점 (。、「」등)
+    r"\uff01-\uff60"    # 전각 영숫자/구두점 (，．！？등)
     r"]+"
 )
 
