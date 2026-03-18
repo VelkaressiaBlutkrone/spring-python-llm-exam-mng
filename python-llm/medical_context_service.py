@@ -15,24 +15,28 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 
 _pool = None
+_pool_lock = asyncio.Lock()
 
 
 async def get_pool() -> aiomysql.Pool:
-    """MySQL 커넥션 풀 (싱글톤)"""
+    """MySQL 커넥션 풀 (싱글톤, asyncio.Lock으로 이중 초기화 방지)"""
     global _pool
-    if _pool is None:
-        settings = get_settings()
-        _pool = await aiomysql.create_pool(
-            host=settings.mysql_host,
-            port=settings.mysql_port,
-            user=settings.mysql_user,
-            password=settings.mysql_password,
-            db=settings.mysql_db,
-            charset="utf8mb4",
-            minsize=0,
-            maxsize=10,
-            connect_timeout=10,
-        )
+    if _pool is not None:
+        return _pool
+    async with _pool_lock:
+        if _pool is None:
+            settings = get_settings()
+            _pool = await aiomysql.create_pool(
+                host=settings.mysql_host,
+                port=settings.mysql_port,
+                user=settings.mysql_user,
+                password=settings.mysql_password,
+                db=settings.mysql_db,
+                charset="utf8mb4",
+                minsize=0,
+                maxsize=10,
+                connect_timeout=10,
+            )
     return _pool
 
 

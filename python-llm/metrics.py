@@ -55,13 +55,16 @@ class InferMetrics:
 
     def to_dict(self) -> dict:
         with self._lock:
+            avg_lat = self.total_latency_ms / self.total_requests if self.total_requests > 0 else 0.0
+            suc_rate = self.success_count / self.total_requests if self.total_requests > 0 else 0.0
+            vec_rate = self.vector_search_hits / self.vector_search_total if self.vector_search_total > 0 else 0.0
             return {
                 "total_requests": self.total_requests,
                 "success_count": self.success_count,
                 "error_count": self.error_count,
-                "avg_latency_ms": round(self.avg_latency_ms, 1),
-                "success_rate": round(self.success_rate, 4),
-                "vector_hit_rate": round(self.vector_hit_rate, 4),
+                "avg_latency_ms": round(avg_lat, 1),
+                "success_rate": round(suc_rate, 4),
+                "vector_hit_rate": round(vec_rate, 4),
             }
 
     def reset(self):

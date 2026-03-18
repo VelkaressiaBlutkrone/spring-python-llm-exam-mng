@@ -207,22 +207,34 @@ async def chat_with_ollama_stream(
     }
 
     async def _stream(c: httpx.AsyncClient):
-        async with c.stream(
-            "POST",
-            f"{settings.ollama_base_url}/api/chat",
-            json=payload,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.strip():
-                    continue
-                chunk = json.loads(line)
-                token = chunk.get("message", {}).get("content", "")
-                done = chunk.get("done", False)
-                if token:
-                    yield {"token": token}
-                if done:
-                    yield {"done": True}
+        try:
+            async with c.stream(
+                "POST",
+                f"{settings.ollama_base_url}/api/chat",
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    token = chunk.get("message", {}).get("content", "")
+                    done = chunk.get("done", False)
+                    if token:
+                        yield {"token": token}
+                    if done:
+                        _breaker.record_success()
+                        yield {"done": True}
+        except httpx.ConnectError:
+            logger.error("Ollama 서버 연결 실패: %s", settings.ollama_base_url)
+            _breaker.record_failure()
+            raise ConnectionError(
+                "Ollama 서버에 연결할 수 없습니다. ollama serve 실행 여부를 확인하세요."
+            )
+        except httpx.ReadTimeout:
+            logger.warning("Ollama Stream 추론 타임아웃")
+            _breaker.record_failure()
+            raise TimeoutError("Ollama Stream 추론 타임아웃")
 
     if client is not None:
         async for item in _stream(client):
