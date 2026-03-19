@@ -1,295 +1,411 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>의학지식 / 병원규칙 - LLM 챗봇</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>의학지식 / 병원규칙 Q&A</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
-            background: #f0f2f5;
-            color: #333;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
+      :root {
+        --bg: #0f172a;
+        --surface: #1e293b;
+        --surface-light: #334155;
+        --border: rgba(255,255,255,0.06);
+        --text: #e2e8f0;
+        --text-dim: #94a3b8;
+        --text-muted: #64748b;
+        --accent: #4ade80;
+        --accent-dim: rgba(74,222,128,0.12);
+        --user-bg: #059669;
+        --red: #fca5a5;
+        --red-bg: rgba(239,68,68,0.1);
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: 'Noto Sans KR', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
 
-        /* 헤더 */
-        .chat-header {
-            background: #fff;
-            padding: 14px 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            flex-shrink: 0;
-        }
-        .back-link {
-            text-decoration: none;
-            color: #1e8e3e;
-            font-size: 14px;
-            font-weight: 600;
-            margin-right: 16px;
-        }
-        .back-link:hover { text-decoration: underline; }
-        .chat-header h1 {
-            flex: 1;
-            text-align: center;
-            color: #1e8e3e;
-            font-size: 1.2rem;
-            margin-right: 60px;
-        }
+      .chat-header {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 18px 40px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-shrink: 0;
+      }
+      .back-link {
+        text-decoration: none;
+        color: var(--text-dim);
+        font-size: 20px;
+        line-height: 1;
+        transition: color 0.15s;
+      }
+      .back-link:hover { color: var(--text); }
+      .header-pulse {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: pulse 2s infinite;
+        flex-shrink: 0;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+      }
+      .header-info { flex: 1; }
+      .header-title { font-size: 15px; font-weight: 600; color: var(--text); }
+      .header-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
-        /* 메시지 영역 */
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px 16px;
-            max-width: 800px;
-            width: 100%;
-            margin: 0 auto;
-        }
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 32px 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .chat-messages::-webkit-scrollbar { width: 4px; }
+      .chat-messages::-webkit-scrollbar-thumb { background: var(--surface-light); border-radius: 2px; }
 
-        .message {
-            display: flex;
-            margin-bottom: 16px;
-        }
-        .message.user {
-            justify-content: flex-end;
-        }
-        .message.assistant {
-            justify-content: flex-start;
-        }
+      .message {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .message.user { flex-direction: row-reverse; }
 
-        .message-bubble {
-            max-width: 75%;
-            padding: 12px 16px;
-            border-radius: 16px;
-            font-size: 14px;
-            line-height: 1.6;
-            word-break: break-word;
-        }
-        .message.user .message-bubble {
-            background: #1e8e3e;
-            color: #fff;
-            border-bottom-right-radius: 4px;
-        }
-        .message.assistant .message-bubble {
-            background: #fff;
-            color: #333;
-            border-bottom-left-radius: 4px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-        }
+      .avatar {
+        width: 34px; height: 34px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+      .avatar.bot { background: var(--accent-dim); color: var(--accent); }
+      .avatar.user { background: var(--user-bg); color: #fff; }
 
-        /* 타이핑 인디케이터 */
-        .typing-indicator {
-            display: none;
-            margin-bottom: 16px;
-        }
-        .typing-indicator.active { display: flex; }
-        .typing-indicator .message-bubble {
-            background: #fff;
-            padding: 12px 20px;
-            border-bottom-left-radius: 4px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-            display: flex;
-            gap: 4px;
-            align-items: center;
-        }
-        .typing-dot {
-            width: 8px;
-            height: 8px;
-            background: #aaa;
-            border-radius: 50%;
-            animation: typingBounce 1.2s ease-in-out infinite;
-        }
-        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes typingBounce {
-            0%, 60%, 100% { transform: translateY(0); }
-            30% { transform: translateY(-6px); }
-        }
+      .message-bubble {
+        max-width: 72%;
+        padding: 14px 20px;
+        border-radius: 16px;
+        font-size: 14px;
+        line-height: 1.7;
+        word-break: break-word;
+      }
+      .message.user .message-bubble {
+        background: var(--user-bg);
+        color: #fff;
+        border-bottom-right-radius: 4px;
+      }
+      .message.bot .message-bubble {
+        background: var(--surface);
+        color: var(--text);
+        border-bottom-left-radius: 4px;
+        border: 1px solid var(--border);
+      }
 
-        /* 입력 영역 */
-        .chat-input-area {
-            background: #fff;
-            border-top: 1px solid #e8eaed;
-            padding: 12px 16px;
-            flex-shrink: 0;
-        }
-        .chat-input-wrapper {
-            max-width: 800px;
-            margin: 0 auto;
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-        }
-        .chat-input-wrapper textarea {
-            flex: 1;
-            border: 1px solid #ddd;
-            border-radius: 20px;
-            padding: 10px 16px;
-            font-size: 14px;
-            font-family: inherit;
-            resize: none;
-            max-height: 120px;
-            line-height: 1.4;
-        }
-        .chat-input-wrapper textarea:focus {
-            outline: none;
-            border-color: #1e8e3e;
-        }
-        .send-btn {
-            width: 44px;
-            height: 44px;
-            border: none;
-            border-radius: 50%;
-            background: #1e8e3e;
-            color: #fff;
-            font-size: 18px;
-            cursor: pointer;
-            transition: background 0.2s;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .send-btn:hover { background: #167a32; }
-        .send-btn:disabled {
-            background: #a8dab5;
-            cursor: not-allowed;
-        }
+      .typing-indicator { display: none; gap: 12px; align-items: flex-start; }
+      .typing-indicator.active { display: flex; }
+      .typing-indicator .message-bubble {
+        background: var(--surface);
+        padding: 16px 28px;
+        border-bottom-left-radius: 4px;
+        border: 1px solid var(--border);
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        min-width: 72px;
+        justify-content: center;
+      }
+      .typing-dot {
+        width: 7px; height: 7px;
+        background: var(--text-muted);
+        border-radius: 50%;
+        animation: bounce 1.2s ease-in-out infinite;
+      }
+      .typing-dot:nth-child(2) { animation-delay: 0.15s; }
+      .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+      @keyframes bounce {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-5px); }
+      }
 
-        /* 에러 메시지 */
-        .message.error .message-bubble {
-            background: #fce8e6;
-            color: #c5221f;
-            border-bottom-left-radius: 4px;
-        }
+      .quick-chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding: 14px 40px 6px;
+        scrollbar-width: none;
+      }
+      .quick-chips::-webkit-scrollbar { display: none; }
+      .chip {
+        padding: 8px 16px;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        font-size: 13px;
+        color: var(--text-dim);
+        cursor: pointer;
+        background: transparent;
+        transition: all 0.15s;
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-family: inherit;
+      }
+      .chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+      .chat-input-area {
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        padding: 18px 40px;
+        flex-shrink: 0;
+      }
+      .chat-input-wrapper {
+        display: flex;
+        gap: 12px;
+        align-items: flex-end;
+      }
+      .chat-input-wrapper textarea {
+        flex: 1;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px 20px;
+        font-size: 14px;
+        font-family: inherit;
+        resize: none;
+        min-height: 50px;
+        max-height: 120px;
+        line-height: 1.5;
+        background: var(--bg);
+        color: var(--text);
+        transition: border-color 0.15s;
+      }
+      .chat-input-wrapper textarea::placeholder { color: var(--text-muted); }
+      .chat-input-wrapper textarea:focus { outline: none; border-color: var(--accent); }
+      .send-btn {
+        width: 46px; height: 46px;
+        border: none;
+        border-radius: 12px;
+        background: var(--user-bg);
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+        transition: all 0.15s;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .send-btn:hover { background: #047857; }
+      .send-btn:disabled { background: var(--surface-light); color: var(--text-muted); cursor: not-allowed; }
+
+      .message.error .message-bubble {
+        background: var(--red-bg);
+        color: var(--red);
+        border: 1px solid rgba(239,68,68,0.15);
+        border-bottom-left-radius: 4px;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="chat-header">
-        <a href="/" class="back-link">&larr; 메인으로</a>
-        <h1>의학지식 / 병원규칙 Q&A</h1>
+      <a href="/" class="back-link">&larr;</a>
+      <div class="header-pulse"></div>
+      <div class="header-info">
+        <div class="header-title">병원규칙 Q&A</div>
+        <div class="header-sub">당직, 물품, 위생 등 병원 내부 규칙에 대해 질문해 주세요</div>
+      </div>
     </div>
 
     <div class="chat-messages" id="chatMessages">
-        <div class="message assistant">
-            <div class="message-bubble">
-                안녕하세요! 병원 내부 규칙(당직, 물품, 위생 등)에 대해 궁금한 점을 질문해 주세요.
-            </div>
+      <div class="message bot">
+        <div class="avatar bot">AI</div>
+        <div class="message-bubble">
+          안녕하세요! 병원 내부 규칙(당직, 물품, 위생 등)에 대해 궁금한 점을 질문해 주세요.
         </div>
+      </div>
 
-        <div class="typing-indicator" id="typingIndicator">
-            <div class="message-bubble">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>
+      <div class="typing-indicator" id="typingIndicator">
+        <div class="avatar bot">AI</div>
+        <div class="message-bubble">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
         </div>
+      </div>
+    </div>
+
+    <div class="quick-chips" id="quickChips">
+      <div class="chip" onclick="sendChip(this)">당직 규정</div>
+      <div class="chip" onclick="sendChip(this)">물품 요청 절차</div>
+      <div class="chip" onclick="sendChip(this)">위생 관리 지침</div>
+      <div class="chip" onclick="sendChip(this)">휴가 신청</div>
+      <div class="chip" onclick="sendChip(this)">응급 대응 매뉴얼</div>
     </div>
 
     <div class="chat-input-area">
-        <div class="chat-input-wrapper">
-            <textarea id="chatInput" rows="1" placeholder="질문을 입력하세요..."
-                      oninput="autoResize(this)"></textarea>
-            <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#9654;</button>
-        </div>
+      <div class="chat-input-wrapper">
+        <textarea id="chatInput" rows="1" placeholder="질문을 입력하세요..." oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#9654;</button>
+      </div>
     </div>
 
     <script>
-        const API_URL = '/api/chat/query';
-        const STAFF_ID = 1; // 기본 staffId (추후 로그인 연동)
+      var STREAM_URL = "/api/chat/query/stream";
+      var FALLBACK_URL = "/api/chat/query";
+      var STAFF_ID = 1;
+      var chatHistory = [];
 
-        function autoResize(el) {
-            el.style.height = 'auto';
-            el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+      function autoResize(el) {
+        el.style.height = "auto";
+        el.style.height = Math.min(el.scrollHeight, 120) + "px";
+      }
+      function sendChip(el) {
+        document.getElementById("chatInput").value = el.textContent.trim();
+        sendMessage();
+      }
+      function scrollToBottom() {
+        var c = document.getElementById("chatMessages");
+        c.scrollTop = c.scrollHeight;
+      }
+      function escapeHtml(text) {
+        var div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+      function renderMarkdown(text) {
+        var html = escapeHtml(text);
+        html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+        html = html.replace(/\n/g, "<br>");
+        return html;
+      }
+      function addMessage(role, text) {
+        var container = document.getElementById("chatMessages");
+        var indicator = document.getElementById("typingIndicator");
+        var msgDiv = document.createElement("div");
+        msgDiv.className = "message " + role;
+        var av = document.createElement("div");
+        av.className = "avatar " + role;
+        av.textContent = role === "bot" ? "AI" : "나";
+        var bubble = document.createElement("div");
+        bubble.className = "message-bubble";
+        bubble.innerHTML = renderMarkdown(text);
+        msgDiv.appendChild(av);
+        msgDiv.appendChild(bubble);
+        container.insertBefore(msgDiv, indicator);
+        scrollToBottom();
+        return bubble;
+      }
+      function addStreamBubble() {
+        var container = document.getElementById("chatMessages");
+        var indicator = document.getElementById("typingIndicator");
+        var msgDiv = document.createElement("div");
+        msgDiv.className = "message bot";
+        msgDiv.style.display = "none";
+        var av = document.createElement("div");
+        av.className = "avatar bot";
+        av.textContent = "AI";
+        var bubble = document.createElement("div");
+        bubble.className = "message-bubble";
+        msgDiv.appendChild(av);
+        msgDiv.appendChild(bubble);
+        container.insertBefore(msgDiv, indicator);
+        return bubble;
+      }
+      async function sendMessage() {
+        var input = document.getElementById("chatInput");
+        var query = input.value.trim();
+        if (!query) return;
+        addMessage("user", query);
+        chatHistory.push({ role: "user", content: query });
+        input.value = "";
+        input.style.height = "auto";
+        document.getElementById("sendBtn").disabled = true;
+        document.getElementById("typingIndicator").classList.add("active");
+        document.getElementById("quickChips").style.display = "none";
+        scrollToBottom();
+        var answered = false;
+        try {
+          var answer = await streamResponse(query);
+          if (answer) { chatHistory.push({ role: "assistant", content: answer }); answered = true; }
+        } catch (streamErr) {
+          console.warn("스트리밍 실패, 폴백 사용:", streamErr);
         }
-
-        function addMessage(role, text) {
-            const container = document.getElementById('chatMessages');
-            const indicator = document.getElementById('typingIndicator');
-
-            const msgDiv = document.createElement('div');
-            msgDiv.className = 'message ' + role;
-
-            const bubble = document.createElement('div');
-            bubble.className = 'message-bubble';
-            bubble.innerHTML = renderMarkdown(text);
-
-            msgDiv.appendChild(bubble);
-            container.insertBefore(msgDiv, indicator);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        async function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const query = input.value.trim();
-            if (!query) return;
-
-            // 사용자 메시지 표시
-            addMessage('user', query);
-            input.value = '';
-            input.style.height = 'auto';
-
-            // 전송 버튼 비활성화 + 타이핑 표시
-            document.getElementById('sendBtn').disabled = true;
-            document.getElementById('typingIndicator').classList.add('active');
-            scrollToBottom();
-
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Staff-Id': STAFF_ID
-                    },
-                    body: JSON.stringify({ query: query })
-                });
-
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    throw new Error(err.detail || '서버 오류가 발생했습니다 (' + response.status + ')');
-                }
-
-                const answer = await response.text();
-                addMessage('assistant', answer);
-            } catch (error) {
-                addMessage('error', '오류: ' + error.message);
-            } finally {
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('typingIndicator').classList.remove('active');
-                input.focus();
+        if (!answered) {
+          try {
+            var response = await fetch(FALLBACK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Staff-Id": STAFF_ID },
+              body: JSON.stringify({ query: query }),
+            });
+            if (!response.ok) {
+              var err = await response.json().catch(function () { return {}; });
+              throw new Error(err.detail || "서버 오류 (" + response.status + ")");
             }
+            var fallbackAnswer = await response.text();
+            addMessage("bot", fallbackAnswer);
+            chatHistory.push({ role: "assistant", content: fallbackAnswer });
+          } catch (error) {
+            addMessage("error", "오류: " + error.message);
+          }
         }
-
-        function scrollToBottom() {
-            const container = document.getElementById('chatMessages');
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function renderMarkdown(text) {
-            let html = escapeHtml(text);
-            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-            html = html.replace(/\n/g, '<br>');
-            return html;
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Enter 전송, Shift+Enter 줄바꿈
-        document.getElementById('chatInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
+        document.getElementById("sendBtn").disabled = false;
+        document.getElementById("typingIndicator").classList.remove("active");
+        input.focus();
+      }
+      async function streamResponse(query) {
+        var bubble = addStreamBubble();
+        var response = await fetch(STREAM_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Staff-Id": STAFF_ID },
+          body: JSON.stringify({ query: query, max_length: 512, temperature: 0.3, history: chatHistory.slice(-6) }),
         });
+        if (!response.ok) throw new Error("스트리밍 오류 (" + response.status + ")");
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var fullText = "";
+        var buffer = "";
+        var firstToken = true;
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+          buffer += decoder.decode(result.value, { stream: true });
+          var lines = buffer.split("\n");
+          buffer = lines.pop();
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            if (!line.startsWith("data:")) continue;
+            var sseData = line.substring(5).trim();
+            if (sseData === "[DONE]") continue;
+            try {
+              var parsed = JSON.parse(sseData);
+              if (parsed.error) throw new Error(parsed.error);
+              if (parsed.token) {
+                if (firstToken) { firstToken = false; bubble.parentElement.style.display = ""; document.getElementById("typingIndicator").classList.remove("active"); }
+                fullText += parsed.token;
+                bubble.innerHTML = renderMarkdown(fullText);
+                scrollToBottom();
+              }
+            } catch (e) { /* ignore */ }
+          }
+        }
+        if (!fullText) { bubble.parentElement.remove(); throw new Error("빈 응답"); }
+        return fullText;
+      }
+      document.getElementById("chatInput").addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      });
     </script>
-</body>
+  </body>
 </html>

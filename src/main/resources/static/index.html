@@ -1,112 +1,199 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LLM 의료 서비스</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
-            background: #f0f2f5;
-            color: #333;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .hub-container {
-            max-width: 700px;
-            width: 100%;
-            padding: 24px 16px;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 8px;
-            color: #1a73e8;
-            font-size: 1.8rem;
-        }
-        .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 40px;
-            font-size: 15px;
-        }
-        .card-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        .hub-card {
-            background: #fff;
-            border-radius: 16px;
-            padding: 32px 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            text-decoration: none;
-            color: inherit;
-            transition: transform 0.2s, box-shadow 0.2s;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-        .hub-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        }
-        .hub-card-icon {
-            width: 64px;
-            height: 64px;
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-            margin-bottom: 16px;
-        }
-        .hub-card-icon.medical {
-            background: #e8f0fe;
-            color: #1a73e8;
-        }
-        .hub-card-icon.chat {
-            background: #e6f4ea;
-            color: #1e8e3e;
-        }
-        .hub-card-title {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-        .hub-card-desc {
-            font-size: 14px;
-            color: #666;
-            line-height: 1.5;
-        }
-        @media (max-width: 500px) {
-            .card-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+      :root {
+        --bg: #0f172a;
+        --surface: rgba(255,255,255,0.06);
+        --surface-hover: rgba(255,255,255,0.10);
+        --border: rgba(255,255,255,0.08);
+        --text: #e2e8f0;
+        --text-dim: #94a3b8;
+        --blue: #60a5fa;
+        --green: #4ade80;
+        --red: #f87171;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: 'Noto Sans KR', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+      }
+      body::before {
+        content: '';
+        position: fixed; inset: 0;
+        background:
+          radial-gradient(ellipse 600px 400px at 20% 30%, rgba(96,165,250,0.08), transparent),
+          radial-gradient(ellipse 500px 500px at 80% 70%, rgba(74,222,128,0.06), transparent);
+        pointer-events: none;
+      }
+
+      .hub-container {
+        max-width: 640px;
+        width: 100%;
+        padding: 40px 32px;
+        position: relative;
+        z-index: 1;
+      }
+      .title-area {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+      h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 8px;
+      }
+      .subtitle {
+        color: var(--text-dim);
+        font-size: 14px;
+        font-weight: 400;
+      }
+      .status-bar {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 20px;
+        padding: 6px 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+      }
+      .status-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        animation: pulse 2s infinite;
+      }
+      .status-dot.offline { background: var(--red); animation: none; }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74,222,128,0.4); }
+        50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(74,222,128,0); }
+      }
+      .status-text {
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+
+      .card-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .hub-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 36px 28px;
+        text-decoration: none;
+        color: inherit;
+        transition: all 0.25s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        backdrop-filter: blur(8px);
+      }
+      .hub-card:hover {
+        background: var(--surface-hover);
+        border-color: rgba(255,255,255,0.14);
+        transform: translateY(-4px);
+        box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+      }
+      .hub-card-icon {
+        width: 56px; height: 56px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 26px;
+        margin-bottom: 20px;
+        transition: transform 0.25s ease;
+      }
+      .hub-card:hover .hub-card-icon { transform: scale(1.08); }
+      .hub-card-icon.medical {
+        background: rgba(96,165,250,0.12);
+        color: var(--blue);
+      }
+      .hub-card-icon.chat {
+        background: rgba(74,222,128,0.12);
+        color: var(--green);
+      }
+      .hub-card-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .hub-card-desc {
+        font-size: 13px;
+        color: var(--text-dim);
+        line-height: 1.6;
+      }
+
+      @media (max-width: 560px) {
+        .card-grid { grid-template-columns: 1fr; }
+        .hub-container { padding: 32px 20px; }
+        h1 { font-size: 1.5rem; }
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="hub-container">
+      <div class="title-area">
         <h1>LLM 의료 서비스</h1>
-        <p class="subtitle">AI 기반 의료 상담 및 병원 규칙 안내 서비스</p>
-
-        <div class="card-grid">
-            <a href="/medical.html" class="hub-card">
-                <div class="hub-card-icon medical">&#x1F3E5;</div>
-                <div class="hub-card-title">질병 Q&A</div>
-                <div class="hub-card-desc">증상을 입력하면 AI가 추천 진료과와 의사 목록을 안내합니다.</div>
-            </a>
-
-            <a href="/chat.html" class="hub-card">
-                <div class="hub-card-icon chat">&#x1F4CB;</div>
-                <div class="hub-card-title">의학지식 / 병원규칙</div>
-                <div class="hub-card-desc">병원 내부 규칙, 당직, 물품, 위생 등에 대해 AI에게 질문하세요.</div>
-            </a>
+        <p class="subtitle">AI 기반 의료 상담 및 병원 규칙 안내</p>
+        <div class="status-bar">
+          <div class="status-dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">서버 확인 중...</span>
         </div>
+      </div>
+
+      <div class="card-grid">
+        <a href="/medical.html" class="hub-card">
+          <div class="hub-card-icon medical">&#x1F3E5;</div>
+          <div class="hub-card-title">질병 Q&A</div>
+          <div class="hub-card-desc">증상을 입력하면 AI가 추천 진료과와 의사 목록을 안내합니다.</div>
+        </a>
+        <a href="/chat.html" class="hub-card">
+          <div class="hub-card-icon chat">&#x1F4CB;</div>
+          <div class="hub-card-title">의학지식 / 병원규칙</div>
+          <div class="hub-card-desc">병원 내부 규칙, 당직, 물품, 위생 등에 대해 AI에게 질문하세요.</div>
+        </a>
+      </div>
     </div>
-</body>
+
+    <script>
+      async function checkServerStatus() {
+        var dot = document.getElementById("statusDot");
+        var text = document.getElementById("statusText");
+        try {
+          await fetch("/api/medical/query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: "ping" }),
+            signal: AbortSignal.timeout(5000),
+          });
+          dot.classList.remove("offline");
+          text.textContent = "서버 연결됨";
+        } catch (e) {
+          dot.classList.add("offline");
+          text.textContent = "서버 연결 안 됨";
+        }
+      }
+      checkServerStatus();
+      setInterval(checkServerStatus, 30000);
+    </script>
+  </body>
 </html>
