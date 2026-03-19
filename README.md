@@ -331,17 +331,17 @@ curl -X POST http://localhost:8080/api/chat/query \
 
 ### Python LLM 서버 직접 API
 
-| 엔드포인트             | 메서드 | 설명                         | Rate Limit |
-| ---------------------- | ------ | ---------------------------- | ---------- |
-| `/infer`               | POST   | 기본 LLM 추론                | 20/min     |
-| `/infer/medical`       | POST   | 의학 컨텍스트 + Chat API     | 10/min     |
-| `/infer/medical/stream`| POST   | 의학 컨텍스트 + SSE 스트리밍 | 10/min     |
-| `/infer/rule`          | POST   | 병원 규칙 RAG + Chat API     | 10/min     |
-| `/feedback`            | POST   | LLM 응답 품질 피드백 저장    | 10/min     |
-| `/feedback/stats`      | GET    | 피드백 통계 조회             | -          |
-| `/metrics`             | GET    | 추론 메트릭 조회             | -          |
-| `/health`              | GET    | 헬스체크 (Ollama/MySQL/ChromaDB) | -      |
-| `/typo/reload`         | POST   | 오타 사전 DB 리로드          | -          |
+| 엔드포인트              | 메서드 | 설명                             | Rate Limit |
+| ----------------------- | ------ | -------------------------------- | ---------- |
+| `/infer`                | POST   | 기본 LLM 추론                    | 20/min     |
+| `/infer/medical`        | POST   | 의학 컨텍스트 + Chat API         | 10/min     |
+| `/infer/medical/stream` | POST   | 의학 컨텍스트 + SSE 스트리밍     | 10/min     |
+| `/infer/rule`           | POST   | 병원 규칙 RAG + Chat API         | 10/min     |
+| `/feedback`             | POST   | LLM 응답 품질 피드백 저장        | 10/min     |
+| `/feedback/stats`       | GET    | 피드백 통계 조회                 | -          |
+| `/metrics`              | GET    | 추론 메트릭 조회                 | -          |
+| `/health`               | GET    | 헬스체크 (Ollama/MySQL/ChromaDB) | -          |
+| `/typo/reload`          | POST   | 오타 사전 DB 리로드              | -          |
 
 ### 히스토리 조회
 
@@ -359,13 +359,13 @@ curl http://localhost:8080/api/chat/history/1
 
 ## 에러 응답
 
-| HTTP 상태 | 상황                      | 응답 메시지                   |
-| --------- | ------------------------- | ----------------------------- |
-| 429       | Rate Limit 초과           | Rate limit exceeded           |
-| 503       | Python LLM 서버 연결 실패 | LLM 서버를 사용할 수 없습니다 |
+| HTTP 상태 | 상황                      | 응답 메시지                        |
+| --------- | ------------------------- | ---------------------------------- |
+| 429       | Rate Limit 초과           | Rate limit exceeded                |
+| 503       | Python LLM 서버 연결 실패 | LLM 서버를 사용할 수 없습니다      |
 | 503       | Circuit Breaker OPEN      | 서비스 일시 중단 (Retry-After: 30) |
-| 504       | LLM 응답 시간 초과        | LLM 응답 시간 초과            |
-| 500       | 서버 내부 오류            | 서버 내부 오류가 발생했습니다 |
+| 504       | LLM 응답 시간 초과        | LLM 응답 시간 초과                 |
+| 500       | 서버 내부 오류            | 서버 내부 오류가 발생했습니다      |
 
 ## 데이터베이스 스키마
 
@@ -413,15 +413,15 @@ curl http://localhost:8080/api/chat/history/1
 
 ### llm_feedback (LLM 응답 피드백)
 
-| 컬럼       | 타입         | 설명                    |
-| ---------- | ------------ | ----------------------- |
-| id         | INT (PK)     | 고유 ID                 |
-| session_id | VARCHAR(100) | 세션 ID                 |
-| query      | TEXT         | 사용자 질문             |
-| response   | TEXT         | LLM 응답               |
-| score      | INT          | 만족도 (1-5)            |
-| comment    | TEXT         | 피드백 코멘트           |
-| endpoint   | VARCHAR(50)  | 사용 엔드포인트         |
+| 컬럼       | 타입         | 설명            |
+| ---------- | ------------ | --------------- |
+| id         | INT (PK)     | 고유 ID         |
+| session_id | VARCHAR(100) | 세션 ID         |
+| query      | TEXT         | 사용자 질문     |
+| response   | TEXT         | LLM 응답        |
+| score      | INT          | 만족도 (1-5)    |
+| comment    | TEXT         | 피드백 코멘트   |
+| endpoint   | VARCHAR(50)  | 사용 엔드포인트 |
 
 ## 테스트
 
@@ -497,25 +497,25 @@ python -m pytest tests/ -v --cov
 
 ## 주요 기능
 
-| 기능              | 설명                                               |
-| ----------------- | -------------------------------------------------- |
-| 의료 상담         | 증상 입력 → 추천 진료과 + 담당 의사 + AI 상담 응답 |
-| SSE 스트리밍      | 토큰 단위 실시간 응답으로 체감 속도 개선           |
-| RAG 벡터 검색     | ChromaDB + Ollama 임베딩으로 의미 기반 문서 검색   |
-| 하이브리드 검색   | 벡터 검색 우선 → MySQL FULLTEXT 폴백 (병렬 실행)   |
-| Re-ranking        | LLM 기반 검색 결과 관련성 재정렬 (선택적 활성화)   |
-| 쿼리 확장         | 짧은 질문을 의학 용어로 확장하여 검색 재현율 향상  |
-| 텍스트 청킹       | 긴 문서를 오버랩 청크로 분할하여 벡터 검색 품질 향상 |
-| Circuit Breaker   | Ollama 장애 시 자동 격리 (5회 실패 → 30초 차단)    |
-| Rate Limiting     | slowapi 기반 API 호출 제한 (10~20/min)             |
-| 오타 교정         | 의학 용어 오타 자동 보정 (DB + 내장 사전, hit 추적) |
-| 중국어 필터링     | 시스템 프롬프트 강화 + CJK 패턴 실시간 제거        |
-| Multi-turn 대화   | 최근 3턴 대화 이력을 컨텍스트에 포함               |
-| 피드백 수집       | LLM 응답 만족도 (1-5) 피드백 저장 + 통계 조회      |
-| 추론 메트릭       | 지연시간, 성공률, 벡터 히트율 실시간 모니터링      |
-| 증분 인덱싱       | 타임스탬프 기반 변경분만 재인덱싱 (--full로 전체)  |
-| 챗 히스토리       | 상담 이력 자동 저장 (PENDING → COMPLETED/FAILED)   |
-| 프론트엔드        | 병렬 API 호출, 스트리밍 우선 + 폴백 렌더링         |
+| 기능            | 설명                                                 |
+| --------------- | ---------------------------------------------------- |
+| 의료 상담       | 증상 입력 → 추천 진료과 + 담당 의사 + AI 상담 응답   |
+| SSE 스트리밍    | 토큰 단위 실시간 응답으로 체감 속도 개선             |
+| RAG 벡터 검색   | ChromaDB + Ollama 임베딩으로 의미 기반 문서 검색     |
+| 하이브리드 검색 | 벡터 검색 우선 → MySQL FULLTEXT 폴백 (병렬 실행)     |
+| Re-ranking      | LLM 기반 검색 결과 관련성 재정렬 (선택적 활성화)     |
+| 쿼리 확장       | 짧은 질문을 의학 용어로 확장하여 검색 재현율 향상    |
+| 텍스트 청킹     | 긴 문서를 오버랩 청크로 분할하여 벡터 검색 품질 향상 |
+| Circuit Breaker | Ollama 장애 시 자동 격리 (5회 실패 → 30초 차단)      |
+| Rate Limiting   | slowapi 기반 API 호출 제한 (10~20/min)               |
+| 오타 교정       | 의학 용어 오타 자동 보정 (DB + 내장 사전, hit 추적)  |
+| 중국어 필터링   | 시스템 프롬프트 강화 + CJK 패턴 실시간 제거          |
+| Multi-turn 대화 | 최근 3턴 대화 이력을 컨텍스트에 포함                 |
+| 피드백 수집     | LLM 응답 만족도 (1-5) 피드백 저장 + 통계 조회        |
+| 추론 메트릭     | 지연시간, 성공률, 벡터 히트율 실시간 모니터링        |
+| 증분 인덱싱     | 타임스탬프 기반 변경분만 재인덱싱 (--full로 전체)    |
+| 챗 히스토리     | 상담 이력 자동 저장 (PENDING → COMPLETED/FAILED)     |
+| 프론트엔드      | 병렬 API 호출, 스트리밍 우선 + 폴백 렌더링           |
 
 ## 참고 문서
 
