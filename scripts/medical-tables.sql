@@ -74,3 +74,20 @@ CREATE TABLE IF NOT EXISTS medical_rule (
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_category (category)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5. 예약 테이블
+CREATE TABLE IF NOT EXISTS reservation_tb (
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    doctor_id        BIGINT       NOT NULL COMMENT '의사 FK',
+    staff_id         BIGINT       NULL     COMMENT '직원 FK (nullable)',
+    reservation_date DATE         NOT NULL COMMENT '예약 날짜',
+    start_time       TIME         NOT NULL COMMENT '시작 시간',
+    end_time         TIME         NOT NULL COMMENT '종료 시간',
+    status           VARCHAR(20)  NOT NULL DEFAULT 'CONFIRMED' COMMENT '상태 (CONFIRMED, CANCELLED)',
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_doctor_date (doctor_id, reservation_date),
+    INDEX idx_staff (staff_id),
+    CONSTRAINT fk_reservation_doctor FOREIGN KEY (doctor_id) REFERENCES doctor(id),
+    CONSTRAINT fk_reservation_staff  FOREIGN KEY (staff_id)  REFERENCES staff(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
