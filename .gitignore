@@ -1,3 +1,4 @@
+### Gradle ###
 HELP.md
 .gradle
 build/
@@ -43,10 +44,32 @@ out/
 .omc/
 nul
 
-### Python LLM ###
-python-llm/chroma_data/
+### Environment ###
+.env
+.env.*
+!.env.example
+
+### Python ###
 __pycache__/
 *.pyc
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+*.egg-info/
+.index_meta.json
+
+### Python LLM ###
+python-llm/chroma_data/
+python-llm/.cache/
+python-llm/models/
 
 ### Data files ###
 llm_data/*.zip
+
+### Logs ###
+*.log
+
+### OS ###
+.DS_Store
+Thumbs.db
