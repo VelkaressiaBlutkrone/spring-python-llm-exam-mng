@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.http.MediaType;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -42,6 +44,29 @@ public class ChatService {
 				.retrieve()
 				.bodyToMono(LlmResponse.class)
 				.map(LlmResponse::getGeneratedText)
+				.onErrorMap(WebClientRequestException.class, e -> {
+					if (e.getCause() instanceof ConnectTimeoutException) {
+						return new LlmTimeoutException("Rule LLM 서버 연결 타임아웃", e);
+					}
+					return new LlmServiceUnavailableException("Rule LLM 서버 연결 실패", e);
+				})
+				.onErrorMap(TimeoutException.class, e ->
+						new LlmTimeoutException("Rule LLM 응답 시간 초과", e));
+	}
+
+	public Flux<String> callRuleLlmApiStream(String query) {
+		log.debug("Rule LLM Stream API 호출 시작 - query: {}", query);
+
+		return llmWebClient.post()
+				.uri("/infer/rule/stream")
+				.bodyValue(Map.of(
+						"query", query,
+						"max_length", 512,
+						"temperature", 0.3
+				))
+				.accept(MediaType.TEXT_EVENT_STREAM)
+				.retrieve()
+				.bodyToFlux(String.class)
 				.onErrorMap(WebClientRequestException.class, e -> {
 					if (e.getCause() instanceof ConnectTimeoutException) {
 						return new LlmTimeoutException("Rule LLM 서버 연결 타임아웃", e);

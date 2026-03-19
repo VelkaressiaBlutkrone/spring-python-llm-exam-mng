@@ -497,6 +497,101 @@ async def infer_rule(request: Request, body: InferRequest) -> InferResponse:
     return InferResponse(generated_text=generated_text)
 
 
+@app.post("/infer/rule/stream")
+@limiter.limit("10/minute")
+async def infer_rule_stream(request: Request, body: InferRequest):
+    """
+    병원 규칙 Q&A 스트리밍 추론 (SSE)
+    /infer/rule과 동일한 로직, stream:true로 토큰 단위 전송
+    """
+    query_preview = body.query[:50] + "..." if len(body.query) > 50 else body.query
+    logger.info("Rule stream request: query=%s", repr(query_preview))
+
+    settings = get_settings()
+    corrected_query = correct_typos(body.query)
+
+    # RAG: 병원규칙 컨텍스트 주입
+    rule_context = ""
+    try:
+        from rule_context_service import build_rule_context
+        rule_context = await build_rule_context(corrected_query)
+    except Exception as exc:
+        logger.warning("Rule context build skipped (stream): %s", exc)
+    logger.info("Rule context (stream): %d chars", len(rule_context))
+
+    # 검색 결과가 없으면 안내 메시지 스트리밍 반환
+    if not rule_context:
+        no_result_msg = "해당 내용이 등록되어 있지 않습니다. 관리자에게 문의 바랍니다."
+        if corrected_query != body.query:
+            no_result_msg = (
+                f"'{body.query}'을(를) '{corrected_query}'(으)로 검색했으나, "
+                "해당 내용이 등록되어 있지 않습니다. 관리자에게 문의 바랍니다."
+            )
+
+        async def no_result_sse():
+            data = json.dumps({"token": no_result_msg}, ensure_ascii=False)
+            yield f"data: {data}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            no_result_sse(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+
+    messages = [{"role": "system", "content": load_prompt("rule_system")}]
+    messages.append({"role": "system", "content": rule_context})
+
+    if body.history:
+        recent_history = body.history[-6:]
+        for msg in recent_history:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({"role": "user", "content": corrected_query})
+
+    stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
+    http_client = request.app.state.http_client
+
+    if settings.llm_backend == "vllm":
+        from vllm_service import chat_with_vllm_stream as _chat_stream
+    else:
+        from ollama_service import chat_with_ollama_stream as _chat_stream
+
+    async def generate_sse():
+        try:
+            async for item in _chat_stream(
+                messages=messages,
+                temperature=body.temperature,
+                max_length=body.max_length,
+                stop=stop_tokens,
+                client=http_client,
+            ):
+                if "token" in item:
+                    raw_token = item["token"]
+                    token = SPECIAL_TOKEN_PATTERN.sub("", raw_token)
+                    token = NON_KOREAN_CJK_PATTERN.sub("", token)
+                    if token:
+                        data = json.dumps({"token": token}, ensure_ascii=False)
+                        yield f"data: {data}\n\n"
+                if item.get("done"):
+                    yield "data: [DONE]\n\n"
+        except Exception as exc:
+            logger.error("Rule stream error: %s", exc)
+            error_data = json.dumps({"error": str(exc)}, ensure_ascii=False)
+            yield f"data: {error_data}\n\n"
+
+    return StreamingResponse(
+        generate_sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.post("/feedback", response_model=FeedbackResponse)
 @limiter.limit("10/minute")
 async def submit_feedback(request: Request, body: FeedbackRequest) -> FeedbackResponse:
