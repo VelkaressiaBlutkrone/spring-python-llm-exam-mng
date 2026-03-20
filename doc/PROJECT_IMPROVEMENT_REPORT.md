@@ -3,6 +3,7 @@
 > 분석일: 2026-03-20
 > 분석 대상: Spring Boot + Python FastAPI + MySQL + ChromaDB 의료 상담 LLM 시스템
 > 분석 Agent Team: Spring Architect, Python Architect, Security Reviewer, Infra Architect, Frontend Architect
+> 수정 상태 갱신: 2026-03-20
 
 ---
 
@@ -30,12 +31,12 @@
 
 ### 전체 이슈 현황
 
-| 심각도   | 건수 | 주요 영역                                                                            |
-| -------- | ---- | ------------------------------------------------------------------------------------ |
-| CRITICAL | 8    | 보안(인증 부재, 비밀번호 하드코딩), Spring(Reactive+트랜잭션, N+1 쿼리)              |
-| HIGH     | 14   | 보안(IDOR, Prompt Injection), Python(백엔드 추상화, 에러 처리), 인프라(DB 포트 노출) |
-| MEDIUM   | 19   | 코드 품질, RAG 파이프라인, 인프라, 프론트엔드                                        |
-| LOW      | 12   | 컨벤션 위반, 테스트 커버리지, 접근성                                                 |
+| 심각도   | 건수 | 수정 완료 | 주요 영역                                                                            |
+| -------- | ---- | --------- | ------------------------------------------------------------------------------------ |
+| CRITICAL | 8    | 4         | 보안(인증 부재, 비밀번호 하드코딩), Spring(Reactive+트랜잭션, N+1 쿼리)              |
+| HIGH     | 17   | 6         | 보안(IDOR, Prompt Injection), Python(백엔드 추상화, 에러 처리), 인프라(DB 포트 노출) |
+| MEDIUM   | 19   | 0         | 코드 품질, RAG 파이프라인, 인프라, 프론트엔드                                        |
+| LOW      | 12   | 0         | 컨벤션 위반, 테스트 커버리지, 접근성                                                 |
 
 ### 현재 강점
 
@@ -78,33 +79,25 @@
 - **영향**: RCE 취약점 발생 시 전체 시스템 장악 가능
 - **수정**: non-root USER 추가, 최소 권한 DB 계정 분리
 
-### C5. [Spring] Reactive 체인 내 @Transactional 동기 메서드 호출
+### C5. ~~[Spring] Reactive 체인 내 @Transactional 동기 메서드 호출~~ ✅ 수정 완료
 
-- **위치**: `MedicalController.java:51-53`, `ChatController.java:44-46`
-- **문제**: `doOnNext()` 콜백은 Reactor 스레드에서 실행되어 `@Transactional` 미보장
-- **영향**: 트랜잭션 무결성 손실 (PENDING → COMPLETED 전환 실패 가능)
-- **수정**: `Mono.block()` 동기화 또는 `Schedulers.boundedElastic()` + `fromCallable` 패턴
+- **위치**: `MedicalController.java:50`, `ChatController.java:41`
+- **수정됨**: `Mono.block()` 동기화 방식으로 전환하여 트랜잭션 보장
 
-### C6. [Spring] ReservationService N+1 루프 쿼리
+### C6. ~~[Spring] ReservationService N+1 루프 쿼리~~ ✅ 수정 완료
 
-- **위치**: `ReservationService.java:79-80`
-- **문제**: 슬롯마다 `countBy` 개별 쿼리 → 최대 112회 DB 호출
-- **영향**: 동시 접속 시 DB 커넥션 풀 고갈
-- **수정**: 기간별 예약 한 번에 조회 후 메모리 필터링
+- **위치**: `ReservationService.java:57-100`
+- **수정됨**: `findByDoctorIdAndReservationDateBetween()` 벌크 조회 + `Set<String>` 메모리 필터링
 
-### C7. [Spring] DoctorService N+1 쿼리
+### C7. ~~[Spring] DoctorService N+1 쿼리~~ ✅ 수정 완료
 
-- **위치**: `DoctorService.java:50-55`
-- **문제**: 의사마다 스케줄 개별 조회
-- **영향**: 의사 N명 → N+1회 쿼리
-- **수정**: `findByDoctorIdInAndIsAvailableTrue()` IN 쿼리 또는 `@EntityGraph`
+- **위치**: `DoctorService.java:48-64`
+- **수정됨**: `findByDoctorIdInAndIsAvailableTrue(doctorIds)` IN 쿼리 + `Collectors.groupingBy`
 
-### C8. [Python] metrics.py 데드락 가능성
+### C8. ~~[Python] metrics.py 데드락 가능성~~ ✅ 수정 완료
 
-- **위치**: `metrics.py:56-65`
-- **문제**: `to_dict()` 내에서 `self._lock` 재획득 시도 가능
-- **영향**: `/metrics` 호출 시 영구 블락
-- **수정**: `Lock` → `RLock` 전환 또는 인라인 계산
+- **위치**: `metrics.py:59-71`
+- **수정됨**: `to_dict()` 내에서 인라인 계산 (프로퍼티 호출 대신 직접 연산)
 
 ---
 
@@ -123,12 +116,12 @@
 
 ### Spring Boot
 
-| #   | 이슈                                           | 위치                                                  | 수정 방향                     |
-| --- | ---------------------------------------------- | ----------------------------------------------------- | ----------------------------- |
-| H7  | `callLlmApi`/`callMedicalLlmApi` 완전 중복     | `MedicalService.java:37-77`                           | 하나의 private 헬퍼로 통합    |
-| H8  | Controller에서 Repository 직접 주입            | `ChatController.java:30`, `MedicalController.java:35` | Service 레이어로 이동         |
-| H9  | `updateMedicalCompleted` ifPresent 조용한 실패 | `MedicalService.java:117`                             | `orElseThrow`로 변경          |
-| H10 | `@ManyToOne` LAZY 누락                         | `Doctor.java:34`, `DoctorSchedule.java:28`            | `fetch = FetchType.LAZY` 추가 |
+| #   | 이슈                                           | 위치                                                  | 수정 방향                     | 상태        |
+| --- | ---------------------------------------------- | ----------------------------------------------------- | ----------------------------- | ----------- |
+| H7  | `callLlmApi`/`callMedicalLlmApi` 완전 중복     | `MedicalService.java:40-43`                           | callLlmApi → callMedicalLlmApi 위임 | ✅ 수정 완료 |
+| H8  | Controller에서 Repository 직접 주입            | `ChatController.java:28`, `MedicalController.java:35` | Service 레이어로 이동         | ✅ 수정 완료 |
+| H9  | `updateMedicalCompleted` ifPresent 조용한 실패 | `MedicalService.java:105-112`                         | `orElseThrow`로 변경          | ✅ 수정 완료 |
+| H10 | `@ManyToOne` LAZY 누락                         | `Doctor.java:35`, `DoctorSchedule.java:29`            | `fetch = FetchType.LAZY` 추가 | ✅ 수정 완료 |
 
 ### Python LLM
 
@@ -212,31 +205,31 @@
 
 > 목표: 보안 위협 차단 + 데이터 무결성 확보
 
-| 순서 | 작업                                                  | 노력 | 효과                  |
-| ---- | ----------------------------------------------------- | ---- | --------------------- |
-| 1    | 비밀번호 외부화 (.env) + 기존 크리덴셜 교체           | 소   | 보안 CRITICAL 해소    |
-| 2    | DB 포트 localhost 바인딩 (`127.0.0.1`)                | 소   | DB 직접 접근 차단     |
-| 3    | Python non-root USER + 최소 권한 DB 계정              | 소   | 컨테이너 보안 강화    |
-| 4    | SSE/에러 핸들러 내부 정보 유출 차단                   | 소   | 내부 토폴로지 보호    |
-| 5    | Reactive 체인 트랜잭션 수정 (block 또는 fromCallable) | 중   | 트랜잭션 무결성       |
-| 6    | ReservationService + DoctorService N+1 제거           | 소   | DB 쿼리 112회→1회     |
-| 7    | 프론트엔드 중복 ID 충돌 수정                          | 소   | 멀티턴 대화 버그 해소 |
+| 순서 | 작업                                                  | 노력 | 효과                  | 상태        |
+| ---- | ----------------------------------------------------- | ---- | --------------------- | ----------- |
+| 1    | 비밀번호 외부화 (.env) + 기존 크리덴셜 교체           | 소   | 보안 CRITICAL 해소    | ⬜ 부분 수정 |
+| 2    | DB 포트 localhost 바인딩 (`127.0.0.1`)                | 소   | DB 직접 접근 차단     | ⬜ 미수정    |
+| 3    | Python non-root USER + 최소 권한 DB 계정              | 소   | 컨테이너 보안 강화    | ⬜ 미수정    |
+| 4    | SSE/에러 핸들러 내부 정보 유출 차단                   | 소   | 내부 토폴로지 보호    | ✅ 수정 완료 |
+| 5    | Reactive 체인 트랜잭션 수정 (block 또는 fromCallable) | 중   | 트랜잭션 무결성       | ✅ 수정 완료 |
+| 6    | ReservationService + DoctorService N+1 제거           | 소   | DB 쿼리 112회→1회     | ✅ 수정 완료 |
+| 7    | 프론트엔드 중복 ID 충돌 수정                          | 소   | 멀티턴 대화 버그 해소 | ⬜ 미수정    |
 
 ### Phase 2 - 단기 개선 (1~2주)
 
 > 목표: 인증 체계 구축 + 코드 품질 향상
 
-| 순서 | 작업                                           | 노력 | 효과                 |
-| ---- | ---------------------------------------------- | ---- | -------------------- |
-| 8    | Spring Security 도입 (세션 기반 인증)          | 중   | IDOR 해소, 접근 제어 |
-| 9    | Python 관리 엔드포인트 API Key 인증            | 소   | 관리 기능 보호       |
-| 10   | LlmRequest @Valid + @Size 검증                 | 소   | 입력 검증 강화       |
-| 11   | callLlmApi 중복 제거 + Controller→Service 정리 | 소   | 유지보수성 향상      |
-| 12   | ifPresent → orElseThrow 변경                   | 소   | 버그 탐지력 향상     |
-| 13   | @ManyToOne LAZY 추가                           | 소   | 불필요한 JOIN 방지   |
-| 14   | python-llm 헬스체크 + restart 정책 추가        | 소   | 운영 안정성          |
-| 15   | 에러 메트릭 기록 추가                          | 소   | 실제 실패율 파악     |
-| 16   | SSE 스트리밍 타임아웃 + 취소 버튼              | 중   | 사용자 경험 개선     |
+| 순서 | 작업                                           | 노력 | 효과                 | 상태        |
+| ---- | ---------------------------------------------- | ---- | -------------------- | ----------- |
+| 8    | Spring Security 도입 (세션 기반 인증)          | 중   | IDOR 해소, 접근 제어 | ⬜ 미수정    |
+| 9    | Python 관리 엔드포인트 API Key 인증            | 소   | 관리 기능 보호       | ✅ 수정 완료 |
+| 10   | LlmRequest @Valid + @Size 검증                 | 소   | 입력 검증 강화       | ⬜ 미수정    |
+| 11   | callLlmApi 중복 제거 + Controller→Service 정리 | 소   | 유지보수성 향상      | ✅ 수정 완료 |
+| 12   | ifPresent → orElseThrow 변경                   | 소   | 버그 탐지력 향상     | ✅ 수정 완료 |
+| 13   | @ManyToOne LAZY 추가                           | 소   | 불필요한 JOIN 방지   | ✅ 수정 완료 |
+| 14   | python-llm 헬스체크 + restart 정책 추가        | 소   | 운영 안정성          | ⬜ 미수정    |
+| 15   | 에러 메트릭 기록 추가                          | 소   | 실제 실패율 파악     | ⬜ 미수정    |
+| 16   | SSE 스트리밍 타임아웃 + 취소 버튼              | 중   | 사용자 경험 개선     | ⬜ 미수정    |
 
 ### Phase 3 - 중기 고도화 (3~4주)
 
@@ -334,44 +327,36 @@
 
 ## 부록: 이슈 전체 목록 (심각도별)
 
-### Critical (8건)
+### Critical (8건, 4건 수정 완료)
 
-1. C1 - 비밀번호 하드코딩 (보안)
-2. C2 - 인증/인가 전무 (보안)
-3. C3 - IDOR 취약점 (보안)
-4. C4 - root 권한 컨테이너 (보안)
-5. C5 - Reactive+@Transactional 충돌 (Spring)
-6. C6 - ReservationService N+1 (Spring)
-7. C7 - DoctorService N+1 (Spring)
-8. C8 - metrics.py 데드락 (Python)
+1. C1 - 비밀번호 하드코딩 (보안) — ⬜ 부분 수정 (config.py 기본값 제거, docker-compose는 별도 확인 필요)
+2. C2 - 인증/인가 전무 (보안) — ⬜ 미수정
+3. C3 - IDOR 취약점 (보안) — ⬜ 미수정
+4. C4 - root 권한 컨테이너 (보안) — ⬜ 미수정
+5. C5 - Reactive+@Transactional 충돌 (Spring) — ✅ 수정 완료
+6. C6 - ReservationService N+1 (Spring) — ✅ 수정 완료
+7. C7 - DoctorService N+1 (Spring) — ✅ 수정 완료
+8. C8 - metrics.py 데드락 (Python) — ✅ 수정 완료
 
-### High (17건)
+### High (17건, 6건 수정 완료)
 
-1. H1 - SSE 내부 정보 유출 (보안)
-2. H2 - ConnectionError 정보 유출 (보안)
-3. H3 - Prompt Injection 방어 없음 (보안)
-4. H4 - LlmRequest 입력 검증 없음 (보안)
-5. H5 - DB 포트 전 인터페이스 바인딩 (보안)
-6. H6 - trust_remote_code=True (보안)
-7. H7 - callLlmApi 중복 (Spring)
-8. H8 - Controller→Repository 직접 주입 (Spring)
-9. H9 - ifPresent 조용한 실패 (Spring)
-10. H10 - @ManyToOne LAZY 누락 (Spring)
-11. H11 - LLM 백엔드 5곳 중복 (Python)
-12. H12 - HuggingFace 이벤트 루프 차단 (Python)
-13. H13 - 에러 메트릭 미기록 (Python)
-14. H14 - 비멱등 INSERT (Python)
-15. H15 - 중복 ID 충돌 (Frontend)
-16. H16 - 헬스체크 DB 부작용 (Frontend)
-17. H17 - SSE 에러 무시 (Frontend)
-
-### Medium (19건)
-
-26~44: 패키지 구조, PK 통일, Enum 전환, Resp 래퍼, GlobalExceptionHandler, Reranker, 벡터 threshold, 인덱싱 체크포인트, CI/CD, 구조화 로깅, Actuator, docker 헬스체크, restart, 네트워크 격리, lock 파일, TLS, ChromaDB 인증, SSE 타임아웃, 반응형
-
-### Low (12건)
-
-lmApi 중복 (Spring) 8. H8 - Controller→Repository 직접 주입 (Spring) 9. H9 - ifPresent 조용한 실패 (Spring) 10. H10 - @ManyToOne LAZY 누락 (Spring) 11. H11 - LLM 백엔드 5곳 중복 (Python) 12. H12 - HuggingFace 이벤트 루프 차단 (Python) 13. H13 - 에러 메트릭 미기록 (Python) 14. H14 - 비멱등 INSERT (Python) 15. H15 - 중복 ID 충돌 (Frontend) 16. H16 - 헬스체크 DB 부작용 (Frontend) 16. H16 - 헬스체크 DB 부작용 (Frontend) 17. H17 - SSE 에러 무시 (Frontend)
+1. H1 - SSE 내부 정보 유출 (보안) — ✅ 수정 완료
+2. H2 - ConnectionError 정보 유출 (보안) — ✅ 수정 완료
+3. H3 - Prompt Injection 방어 없음 (보안) — ⬜ 미수정
+4. H4 - LlmRequest 입력 검증 없음 (보안) — ⬜ 미수정
+5. H5 - DB 포트 전 인터페이스 바인딩 (보안) — ⬜ 미수정
+6. H6 - trust_remote_code=True (보안) — ⬜ 미수정
+7. H7 - callLlmApi 중복 (Spring) — ✅ 수정 완료
+8. H8 - Controller→Repository 직접 주입 (Spring) — ✅ 수정 완료
+9. H9 - ifPresent 조용한 실패 (Spring) — ✅ 수정 완료
+10. H10 - @ManyToOne LAZY 누락 (Spring) — ✅ 수정 완료
+11. H11 - LLM 백엔드 5곳 중복 (Python) — ⬜ 미수정
+12. H12 - HuggingFace 이벤트 루프 차단 (Python) — ⬜ 미수정
+13. H13 - 에러 메트릭 미기록 (Python) — ⬜ 미수정
+14. H14 - 비멱등 INSERT (Python) — ⬜ 미수정
+15. H15 - 중복 ID 충돌 (Frontend) — ⬜ 미수정
+16. H16 - 헬스체크 DB 부작용 (Frontend) — ⬜ 미수정
+17. H17 - SSE 에러 무시 (Frontend) — ⬜ 미수정
 
 ### Medium (19건)
 

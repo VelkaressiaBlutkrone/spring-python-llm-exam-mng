@@ -171,13 +171,13 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 
 ---
 
-### Step 6. LlmController 의료 상담 API 확장 (Spring Boot)
+### Step 6. MedicalController 의료 상담 API 확장 (Spring Boot)
 
 **요구사항**: 기존 LLM 쿼리 API를 확장하여 의사 정보를 함께 반환하는 엔드포인트를 추가합니다.
 
 **Workflow**:
 
-1. `LlmController`에 새 엔드포인트 추가:
+1. `MedicalController`에 새 엔드포인트 추가:
    - `POST /api/llm/query/medical` — 의료 상담 + 의사 추천 통합 API
 2. 처리 흐름:
    ```
@@ -189,7 +189,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
    ```
 3. 기존 `POST /api/llm/query`는 하위 호환성을 위해 유지
 
-**산출물**: `LlmController.java` 업데이트, 새 엔드포인트 동작 확인
+**산출물**: `MedicalController.java` 업데이트, 새 엔드포인트 동작 확인
 
 **API 응답 예시** (`POST /api/llm/query/medical`):
 
@@ -231,7 +231,7 @@ LLM 의료 상담 응답에 **추천 진료과의 의사 목록**을 함께 제�
 2. 테스트 작성:
    - `DoctorServiceTest.java` — 진료과별 의사 조회 테스트
    - `LlmResponseParserTest.java` — LLM 응답 파싱 테스트
-   - `LlmControllerTest.java` — `/api/llm/query/medical` 통합 테스트
+   - `MedicalIntegrationTest.java` — `/api/llm/query/medical` 통합 테스트
 
 **산출물**: 샘플 데이터, 테스트 코드
 

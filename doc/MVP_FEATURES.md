@@ -20,7 +20,7 @@
 | **ChatHistory 실패 시 FAILED** | LLM API 호출 실패 시 status를 FAILED로 업데이트                                 | P1 (권장) |
 | **Fallback 응답**              | LLM 호출 실패 시 기본 응답 반환 (선택)                                          | P2 (선택) |
 | **챗 히스토리 조회 API**       | `GET /api/llm/history/{userId}` - 사용자별 히스토리 조회                        | P2 (선택) |
-| **단위 테스트**                | LlmController, LlmService Mock 테스트                                           | P2 (선택) |
+| **단위 테스트**                | MedicalController, ChatController, MedicalService Mock 테스트                    | P2 (선택) |
 | **README 문서화**              | 실행 순서(MySQL → Python → Spring), API 사용법                                  | P2 (선택) |
 
 ---

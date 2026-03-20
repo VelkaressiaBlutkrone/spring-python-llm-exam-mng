@@ -22,7 +22,7 @@
 
 - Python LLM 서버(`app.py`)는 이미 엔드포인트가 분리되어 있으므로 큰 변경 없음
 - LLM 모델 및 RAG 데이터 소스는 현재 공유, 추후 필요 시 분리
-- 프로젝트 코드 컨벤션(`.ai/rules/common-rule.md`) 준수
+- 프로젝트 코드 컨벤션(`.claude/rules/common-rule.md`) 준수
 
 ## 엣지 케이스 & 에러 시나리오
 
