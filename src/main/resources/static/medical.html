@@ -377,11 +377,35 @@
         flex-shrink: 0;
         font-size: 11px;
       }
+
+      @media (max-width: 640px) {
+        .chat-messages {
+          padding: 16px !important;
+        }
+        .chat-input-area {
+          padding: 12px 16px !important;
+        }
+        .quick-chips {
+          padding: 0 16px !important;
+        }
+        .message-bubble {
+          max-width: 88% !important;
+        }
+        .result-card {
+          max-width: 100% !important;
+        }
+        .slots-grid {
+          grid-template-columns: repeat(2, 1fr) !important;
+        }
+        .back-link {
+          padding: 12px 16px !important;
+        }
+      }
     </style>
   </head>
   <body>
     <div class="chat-header">
-      <a href="/" class="back-link">&larr;</a>
+      <a href="/" class="back-link" aria-label="뒤로 가기">&larr; 돌아가기</a>
       <div class="header-pulse"></div>
       <div class="header-info">
         <div class="header-title">AI 증상 상담</div>
@@ -389,7 +413,7 @@
       </div>
     </div>
 
-    <div class="chat-messages" id="chatMessages">
+    <div class="chat-messages" id="chatMessages" aria-live="polite">
       <div class="message bot">
         <div class="avatar bot">AI</div>
         <div class="message-bubble">
@@ -417,9 +441,9 @@
 
     <div class="chat-input-area">
       <div class="chat-input-wrapper">
-        <textarea id="chatInput" rows="1" placeholder="증상을 입력해 주세요..." oninput="autoResize(this)"></textarea>
-        <button class="send-btn" id="sendBtn" onclick="submitQuery()">&#9654;</button>
-        <button id="stopBtn" onclick="stopStreaming()" title="중지">&#9632;</button>
+        <textarea id="chatInput" rows="1" placeholder="증상을 입력해 주세요..." oninput="autoResize(this)" aria-label="증상을 입력하세요"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="submitQuery()" aria-label="전송">&#9654;</button>
+        <button id="stopBtn" onclick="stopStreaming()" title="중지" aria-label="응답 중지">&#9632;</button>
       </div>
     </div>
 
