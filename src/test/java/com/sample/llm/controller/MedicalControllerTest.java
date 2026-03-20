@@ -19,7 +19,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
@@ -30,12 +29,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(MedicalController.class)
@@ -67,13 +64,9 @@ class MedicalControllerTest {
 		when(medicalService.callLlmApi("안녕하세요"))
 				.thenReturn(Mono.just("Mock 응답"));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query")
+		mockMvc.perform(post("/api/medical/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"안녕하세요\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk())
 				.andExpect(content().string("Mock 응답"));
 
@@ -92,14 +85,10 @@ class MedicalControllerTest {
 		when(medicalService.callLlmApi("테스트 쿼리"))
 				.thenReturn(Mono.just("사용자 응답"));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query")
+		mockMvc.perform(post("/api/medical/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.header("X-User-Id", "42")
 						.content("{\"query\": \"테스트 쿼리\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk())
 				.andExpect(content().string("사용자 응답"));
 
@@ -118,13 +107,9 @@ class MedicalControllerTest {
 				.thenReturn(Mono.error(new LlmServiceUnavailableException(
 						"LLM 서버 연결 실패", new RuntimeException("Connection refused"))));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query")
+		mockMvc.perform(post("/api/medical/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"실패 쿼리\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.detail").value("LLM 서버를 사용할 수 없습니다"));
 	}
@@ -141,13 +126,9 @@ class MedicalControllerTest {
 				.thenReturn(Mono.error(new LlmTimeoutException(
 						"LLM 응답 시간 초과", new RuntimeException("Timeout"))));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query")
+		mockMvc.perform(post("/api/medical/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"타임아웃 쿼리\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isGatewayTimeout())
 				.andExpect(jsonPath("$.detail").value("LLM 응답 시간 초과"));
 	}
@@ -163,13 +144,9 @@ class MedicalControllerTest {
 		when(medicalService.callMedicalLlmApi("두통이 심한데 어느 과로 가야 하나요?"))
 				.thenReturn(Mono.just("두통과 어지럼증 증상은 신경과 진료를 추천드립니다."));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/medical-query")
+		mockMvc.perform(post("/api/medical/medical-query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"두통이 심한데 어느 과로 가야 하나요?\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk())
 				.andExpect(content().string("두통과 어지럼증 증상은 신경과 진료를 추천드립니다."));
 
@@ -189,13 +166,9 @@ class MedicalControllerTest {
 				.thenReturn(Mono.error(new LlmServiceUnavailableException(
 						"Medical LLM 서버 연결 실패", new RuntimeException("Connection refused"))));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/medical-query")
+		mockMvc.perform(post("/api/medical/medical-query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"의학 질문\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.detail").value("LLM 서버를 사용할 수 없습니다"));
 	}
@@ -212,13 +185,9 @@ class MedicalControllerTest {
 				.thenReturn(Mono.error(new LlmTimeoutException(
 						"Medical LLM 응답 시간 초과", new RuntimeException("Timeout"))));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/medical-query")
+		mockMvc.perform(post("/api/medical/medical-query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"타임아웃 의학 질문\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isGatewayTimeout())
 				.andExpect(jsonPath("$.detail").value("LLM 응답 시간 초과"));
 	}
@@ -306,13 +275,9 @@ class MedicalControllerTest {
 								List.of(new DoctorScheduleDto("TUE", LocalTime.of(10, 0), LocalTime.of(18, 0), true)))
 				));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query/consult")
+		mockMvc.perform(post("/api/medical/query/consult")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"무릎이 아파요\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.generatedText").value(llmResponse))
 				.andExpect(jsonPath("$.recommendedDepartment").value("정형외과"))
@@ -338,13 +303,9 @@ class MedicalControllerTest {
 		when(llmResponseParser.extractDepartment(llmResponse))
 				.thenReturn(null);
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query/consult")
+		mockMvc.perform(post("/api/medical/query/consult")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"건강 상담\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.generatedText").value(llmResponse))
 				.andExpect(jsonPath("$.recommendedDepartment").doesNotExist())

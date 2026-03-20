@@ -179,10 +179,8 @@
         var dot = document.getElementById("statusDot");
         var text = document.getElementById("statusText");
         try {
-          await fetch("/api/medical/query", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: "ping" }),
+          await fetch("/api/medical/history/1?size=0", {
+            method: "GET",
             signal: AbortSignal.timeout(5000),
           });
           dot.classList.remove("offline");

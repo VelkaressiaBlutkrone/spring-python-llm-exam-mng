@@ -12,4 +12,6 @@ public interface ReservationRepository extends JpaRepository<Reservation, Intege
 	List<Reservation> findByDoctorIdAndReservationDate(Long doctorId, LocalDate reservationDate);
 
 	long countByDoctorIdAndReservationDateAndStartTime(Long doctorId, LocalDate reservationDate, LocalTime startTime);
+
+	List<Reservation> findByDoctorIdAndReservationDateBetween(Long doctorId, LocalDate startDate, LocalDate endDate);
 }

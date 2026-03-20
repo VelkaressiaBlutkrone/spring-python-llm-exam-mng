@@ -36,21 +36,7 @@ public class MedicalService {
 
 	public Mono<String> callLlmApi(String query) {
 		log.debug("LLM API 호출 시작 - query: {}", query);
-
-		return llmWebClient.post()
-				.uri("/infer/medical")
-				.bodyValue(Map.of("query", query, "max_length", 512, "temperature", 0.3))
-				.retrieve()
-				.bodyToMono(LlmResponse.class)
-				.map(LlmResponse::getGeneratedText)
-				.onErrorMap(WebClientRequestException.class, e -> {
-					if (e.getCause() instanceof ConnectTimeoutException) {
-						return new LlmTimeoutException("LLM 서버 연결 타임아웃", e);
-					}
-					return new LlmServiceUnavailableException("LLM 서버 연결 실패", e);
-				})
-				.onErrorMap(TimeoutException.class, e ->
-						new LlmTimeoutException("LLM 응답 시간 초과", e));
+		return callMedicalLlmApi(query);
 	}
 
 	public Mono<String> callMedicalLlmApi(String query) {
@@ -114,23 +100,23 @@ public class MedicalService {
 
 	@Transactional
 	public void updateMedicalCompleted(Long historyId, String answer, long latencyMs) {
-		medicalHistoryRepository.findById(historyId).ifPresent(history -> {
-			history.setAnswer(answer);
-			history.setStatus("COMPLETED");
-			history.setMetadata(buildMetadata(latencyMs));
-			medicalHistoryRepository.save(history);
-			log.debug("MedicalHistory COMPLETED 업데이트 - id: {}, latency: {}ms", historyId, latencyMs);
-		});
+		MedicalHistory history = medicalHistoryRepository.findById(historyId)
+				.orElseThrow(() -> new IllegalStateException("MedicalHistory not found: " + historyId));
+		history.setAnswer(answer);
+		history.setStatus("COMPLETED");
+		history.setMetadata(buildMetadata(latencyMs));
+		medicalHistoryRepository.save(history);
+		log.debug("MedicalHistory COMPLETED 업데이트 - id: {}, latency: {}ms", historyId, latencyMs);
 	}
 
 	@Transactional
 	public void updateMedicalFailed(Long historyId, String errorMessage) {
-		medicalHistoryRepository.findById(historyId).ifPresent(history -> {
-			history.setStatus("FAILED");
-			history.setMetadata(buildErrorMetadata(errorMessage));
-			medicalHistoryRepository.save(history);
-			log.warn("MedicalHistory FAILED 업데이트 - id: {}, error: {}", historyId, errorMessage);
-		});
+		MedicalHistory history = medicalHistoryRepository.findById(historyId)
+				.orElseThrow(() -> new IllegalStateException("MedicalHistory not found: " + historyId));
+		history.setStatus("FAILED");
+		history.setMetadata(buildErrorMetadata(errorMessage));
+		medicalHistoryRepository.save(history);
+		log.warn("MedicalHistory FAILED 업데이트 - id: {}, error: {}", historyId, errorMessage);
 	}
 
 	private String buildMetadata(long latencyMs) {

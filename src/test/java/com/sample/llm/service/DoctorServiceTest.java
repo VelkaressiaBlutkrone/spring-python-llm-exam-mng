@@ -78,7 +78,7 @@ class DoctorServiceTest {
 
 		when(doctorRepository.findByDepartmentAndIsActiveTrue("정형외과"))
 				.thenReturn(List.of(doctor));
-		when(doctorScheduleRepository.findByDoctorIdAndIsAvailableTrue(1L))
+		when(doctorScheduleRepository.findByDoctorIdInAndIsAvailableTrue(List.of(1L)))
 				.thenReturn(List.of(schedule));
 
 		// when

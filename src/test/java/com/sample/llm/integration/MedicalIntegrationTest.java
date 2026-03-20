@@ -14,7 +14,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -23,11 +22,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -85,14 +82,10 @@ class MedicalIntegrationTest {
 		mockLlmResponse("추천 진료과: 신경과\n두통 증상은 신경과 진료를 권장합니다.");
 
 		// 1. 의료 상담 요청
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query")
+		mockMvc.perform(post("/api/medical/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.header("X-User-Id", testStaff.getId())
 						.content("{\"query\": \"두통이 심합니다\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk());
 
 		// 2. DB에 이력이 저장되었는지 확인
@@ -118,13 +111,9 @@ class MedicalIntegrationTest {
 	void medicalQuery_withoutStaffId_savesWithNullStaff() throws Exception {
 		mockLlmResponse("일반 응답입니다.");
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/medical/query")
+		mockMvc.perform(post("/api/medical/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"query\": \"일반 질문\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk());
 
 		var histories = medicalHistoryRepository.findAll();

@@ -473,10 +473,12 @@
         av.textContent = "AI";
         var bubble = document.createElement("div");
         bubble.className = "message-bubble";
-        bubble.id = "streamBubble";
+        var currentBubbleId = "streamBubble-" + Date.now();
+        bubble.id = currentBubbleId;
         msgDiv.appendChild(av);
         msgDiv.appendChild(bubble);
         container.insertBefore(msgDiv, indicator);
+        bubble._bubbleId = currentBubbleId;
         return bubble;
       }
       async function submitQuery() {
@@ -491,7 +493,8 @@
         document.getElementById("typingIndicator").classList.add("active");
         document.getElementById("quickChips").style.display = "none";
         scrollToBottom();
-        var streamPromise = streamResponse(query).catch(function (err) {
+        var currentBubble = null;
+        var streamPromise = streamResponse(query, function(bubble) { currentBubble = bubble; }).catch(function (err) {
           console.warn("스트리밍 실패:", err);
           return "";
         });
@@ -500,7 +503,7 @@
         try {
           var data = await doctorPromise;
           if (streamedText && data.recommendedDepartment) {
-            cleanStreamedResponse(streamedText, data);
+            cleanStreamedResponse(streamedText, data, currentBubble);
           } else if (!streamedText) {
             renderLlmResponse(data);
           }
@@ -525,8 +528,9 @@
         }
         return response.json();
       }
-      async function streamResponse(query) {
+      async function streamResponse(query, onBubbleCreated) {
         var bubble = addStreamBubble();
+        if (onBubbleCreated) onBubbleCreated(bubble);
         bubble.textContent = "";
         var response = await fetch(STREAM_URL, {
           method: "POST",
@@ -565,7 +569,7 @@
         chatHistory.push({ role: "assistant", content: fullText });
         return fullText;
       }
-      function cleanStreamedResponse(streamedText, data) {
+      function cleanStreamedResponse(streamedText, data, bubble) {
         var text = streamedText;
         if (data.recommendedDepartment) {
           text = text.replace(/^[ \t]*(?:\d+\.?\s*)?[-*]?\s*\*{0,2}추천\s*진료과\s*\*{0,2}\s*[:：]?\s*[^\n]*\n*/gim, "");
@@ -576,7 +580,6 @@
           var num = 1;
           text = text.replace(/^(\d+)\.\s/gm, function () { return num++ + ". "; });
         }
-        var bubble = document.getElementById("streamBubble");
         if (bubble) bubble.innerHTML = renderMarkdown(text);
       }
       function renderLlmResponse(data) {
@@ -643,7 +646,7 @@
           card.appendChild(s2);
           var s3 = document.createElement("div");
           s3.className = "result-section";
-          s3.id = "slotSection";
+          s3.id = "slotSection-" + (data.doctors[0] ? data.doctors[0].id : Date.now());
           var s3Label = document.createElement("div");
           s3Label.className = "section-label";
           s3Label.textContent = "예약 가능 일정";
@@ -661,7 +664,8 @@
         var items = el.closest(".result-section").querySelectorAll(".doctor-item");
         items.forEach(function (item) { item.style.background = ""; });
         el.style.background = "rgba(255,255,255,0.03)";
-        var slotSection = document.getElementById("slotSection");
+        var card = el.closest(".result-card");
+        var slotSection = card ? card.querySelector("[id^='slotSection-']") : null;
         if (!slotSection) return;
         slotSection.textContent = "";
         var loadLabel = document.createElement("div");

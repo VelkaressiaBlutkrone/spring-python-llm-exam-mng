@@ -15,10 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -60,8 +60,19 @@ public class ReservationService {
 
 		var schedules = doctorScheduleRepository.findByDoctorIdAndIsAvailableTrue(doctorId);
 
-		List<ReservationResponse.Slot> slots = new ArrayList<>();
 		LocalDate today = LocalDate.now();
+		LocalDate startDate = today.plusDays(1);
+		LocalDate endDate = today.plusDays(8);
+
+		// 해당 기간 예약을 한 번에 조회
+		List<Reservation> existingReservations = reservationRepository
+				.findByDoctorIdAndReservationDateBetween(doctorId, startDate, endDate);
+
+		Set<String> reservedKeys = existingReservations.stream()
+				.map(r -> r.getReservationDate() + "_" + r.getStartTime())
+				.collect(Collectors.toSet());
+
+		List<ReservationResponse.Slot> slots = new ArrayList<>();
 
 		for (int dayOffset = 1; dayOffset <= 7; dayOffset++) {
 			LocalDate date = today.plusDays(dayOffset);
@@ -76,9 +87,8 @@ public class ReservationService {
 							LocalTime slotEnd = slotTime.plusMinutes(30);
 							if (slotEnd.isAfter(schedule.getEndTime())) break;
 
-							long count = reservationRepository.countByDoctorIdAndReservationDateAndStartTime(
-									doctorId, date, slotTime);
-							slots.add(new ReservationResponse.Slot(date, slotTime, slotEnd, count == 0));
+							boolean available = !reservedKeys.contains(date + "_" + slotTime);
+							slots.add(new ReservationResponse.Slot(date, slotTime, slotEnd, available));
 							slotTime = slotEnd;
 						}
 					});

@@ -14,7 +14,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -22,12 +21,10 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ChatController.class)
@@ -48,14 +45,10 @@ class ChatControllerTest {
 		when(chatService.callRuleLlmApi("당직 규칙이 뭔가요?"))
 				.thenReturn(Mono.just("당직은 주 1회 교대 근무입니다."));
 
-		MvcResult mvcResult = mockMvc.perform(post("/api/chat/query")
+		mockMvc.perform(post("/api/chat/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.header("X-Staff-Id", "1")
 						.content("{\"query\": \"당직 규칙이 뭔가요?\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk())
 				.andExpect(content().string("당직은 주 1회 교대 근무입니다."));
 	}

@@ -14,7 +14,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -23,11 +22,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -84,14 +81,10 @@ class ChatIntegrationTest {
 		mockRuleLlmResponse("당직은 주 1회 교대 근무이며, 야간 당직은 오후 6시부터 다음 날 오전 9시까지입니다.");
 
 		// 1. 규칙 Q&A 요청
-		MvcResult mvcResult = mockMvc.perform(post("/api/chat/query")
+		mockMvc.perform(post("/api/chat/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.header("X-Staff-Id", testStaff.getId())
 						.content("{\"query\": \"당직 근무 규정이 어떻게 되나요?\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-
-		mockMvc.perform(asyncDispatch(mvcResult))
 				.andExpect(status().isOk());
 
 		// 2. chatbot_history 테이블에 저장 확인
@@ -126,23 +119,19 @@ class ChatIntegrationTest {
 	void multipleQueries_savedInOrder() throws Exception {
 		mockRuleLlmResponse("첫 번째 답변");
 
-		MvcResult r1 = mockMvc.perform(post("/api/chat/query")
+		mockMvc.perform(post("/api/chat/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.header("X-Staff-Id", testStaff.getId())
 						.content("{\"query\": \"질문 1\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-		mockMvc.perform(asyncDispatch(r1)).andExpect(status().isOk());
+				.andExpect(status().isOk());
 
 		mockRuleLlmResponse("두 번째 답변");
 
-		MvcResult r2 = mockMvc.perform(post("/api/chat/query")
+		mockMvc.perform(post("/api/chat/query")
 						.contentType(MediaType.APPLICATION_JSON)
 						.header("X-Staff-Id", testStaff.getId())
 						.content("{\"query\": \"질문 2\"}"))
-				.andExpect(request().asyncStarted())
-				.andReturn();
-		mockMvc.perform(asyncDispatch(r2)).andExpect(status().isOk());
+				.andExpect(status().isOk());
 
 		var histories = chatHistoryRepository.findAll();
 		assertThat(histories).hasSize(2);

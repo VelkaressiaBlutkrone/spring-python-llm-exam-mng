@@ -23,7 +23,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 @RequiredArgsConstructor
 @RestController
@@ -37,7 +38,7 @@ public class MedicalController {
 	private final LlmResponseParser llmResponseParser;
 
 	@PostMapping("/query")
-	public Mono<String> handleQuery(
+	public String handleQuery(
 			@RequestBody LlmRequest request,
 			@RequestHeader(value = "X-User-Id", required = false) Long userId) {
 
@@ -46,21 +47,21 @@ public class MedicalController {
 		MedicalHistory history = medicalService.saveMedicalPending(request.getQuery(), userId);
 		long startTime = System.currentTimeMillis();
 
-		return medicalService.callLlmApi(request.getQuery())
-				.doOnNext(response -> {
-					long latencyMs = System.currentTimeMillis() - startTime;
-					medicalService.updateMedicalCompleted(history.getId(), response, latencyMs);
-					log.info("LLM 응답 완료 - historyId: {}, latency: {}ms", history.getId(), latencyMs);
-				})
-				.doOnError(error -> {
-					medicalService.updateMedicalFailed(history.getId(), error.getMessage());
-					log.error("LLM 호출 실패 - historyId: {}, error: {}",
-							history.getId(), error.getMessage());
-				});
+		try {
+			String response = medicalService.callLlmApi(request.getQuery()).block();
+			long latencyMs = System.currentTimeMillis() - startTime;
+			medicalService.updateMedicalCompleted(history.getId(), response, latencyMs);
+			log.info("LLM 응답 완료 - historyId: {}, latency: {}ms", history.getId(), latencyMs);
+			return response;
+		} catch (Exception error) {
+			medicalService.updateMedicalFailed(history.getId(), error.getMessage());
+			log.error("LLM 호출 실패 - historyId: {}, error: {}", history.getId(), error.getMessage());
+			throw error;
+		}
 	}
 
 	@PostMapping("/medical-query")
-	public Mono<String> handleMedicalQuery(
+	public String handleMedicalQuery(
 			@RequestBody LlmRequest request,
 			@RequestHeader(value = "X-User-Id", required = false) Long userId) {
 
@@ -69,22 +70,21 @@ public class MedicalController {
 		MedicalHistory history = medicalService.saveMedicalPending(request.getQuery(), userId);
 		long startTime = System.currentTimeMillis();
 
-		return medicalService.callMedicalLlmApi(request.getQuery())
-				.doOnNext(response -> {
-					long latencyMs = System.currentTimeMillis() - startTime;
-					medicalService.updateMedicalCompleted(history.getId(), response, latencyMs);
-					log.info("Medical LLM 응답 완료 - historyId: {}, latency: {}ms",
-							history.getId(), latencyMs);
-				})
-				.doOnError(error -> {
-					medicalService.updateMedicalFailed(history.getId(), error.getMessage());
-					log.error("Medical LLM 호출 실패 - historyId: {}, error: {}",
-							history.getId(), error.getMessage());
-				});
+		try {
+			String response = medicalService.callMedicalLlmApi(request.getQuery()).block();
+			long latencyMs = System.currentTimeMillis() - startTime;
+			medicalService.updateMedicalCompleted(history.getId(), response, latencyMs);
+			log.info("Medical LLM 응답 완료 - historyId: {}, latency: {}ms", history.getId(), latencyMs);
+			return response;
+		} catch (Exception error) {
+			medicalService.updateMedicalFailed(history.getId(), error.getMessage());
+			log.error("Medical LLM 호출 실패 - historyId: {}, error: {}", history.getId(), error.getMessage());
+			throw error;
+		}
 	}
 
 	@PostMapping("/query/consult")
-	public Mono<MedicalLlmResponse> handleMedicalQueryWithDoctors(
+	public MedicalLlmResponse handleMedicalQueryWithDoctors(
 			@RequestBody LlmRequest request,
 			@RequestHeader(value = "X-User-Id", required = false) Long userId) {
 
@@ -93,28 +93,28 @@ public class MedicalController {
 		MedicalHistory history = medicalService.saveMedicalPending(request.getQuery(), userId);
 		long startTime = System.currentTimeMillis();
 
-		return medicalService.callMedicalLlmApi(request.getQuery())
-				.map(response -> {
-					long latencyMs = System.currentTimeMillis() - startTime;
-					medicalService.updateMedicalCompleted(history.getId(), response, latencyMs);
+		try {
+			String response = medicalService.callMedicalLlmApi(request.getQuery()).block();
+			long latencyMs = System.currentTimeMillis() - startTime;
+			medicalService.updateMedicalCompleted(history.getId(), response, latencyMs);
 
-					String department = llmResponseParser.extractDepartment(response);
-					String reason = llmResponseParser.extractRecommendationReason(response);
+			String department = llmResponseParser.extractDepartment(response);
+			String reason = llmResponseParser.extractRecommendationReason(response);
 
-					java.util.List<DoctorWithScheduleDto> doctors = (department != null)
-							? doctorService.findDoctorsWithSchedule(department)
-							: java.util.List.of();
+			List<DoctorWithScheduleDto> doctors = (department != null)
+					? doctorService.findDoctorsWithSchedule(department)
+					: List.of();
 
-					log.info("Medical+Doctor 응답 - dept: {}, doctors: {}, latency: {}ms",
-							department, doctors.size(), latencyMs);
+			log.info("Medical+Doctor 응답 - dept: {}, doctors: {}, latency: {}ms",
+					department, doctors.size(), latencyMs);
 
-					return new MedicalLlmResponse(response, department, reason, doctors);
-				})
-				.doOnError(error -> {
-					medicalService.updateMedicalFailed(history.getId(), error.getMessage());
-					log.error("Medical+Doctor 호출 실패 - historyId: {}, error: {}",
-							history.getId(), error.getMessage());
-				});
+			return new MedicalLlmResponse(response, department, reason, doctors);
+		} catch (Exception error) {
+			medicalService.updateMedicalFailed(history.getId(), error.getMessage());
+			log.error("Medical+Doctor 호출 실패 - historyId: {}, error: {}",
+					history.getId(), error.getMessage());
+			throw error;
+		}
 	}
 
 	@PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

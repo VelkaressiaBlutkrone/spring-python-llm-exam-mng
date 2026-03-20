@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 @RequiredArgsConstructor
 @RestController
@@ -30,7 +29,7 @@ public class ChatController {
 	private final ChatHistoryRepository chatHistoryRepository;
 
 	@PostMapping("/query")
-	public Mono<String> handleRuleQuery(
+	public String handleRuleQuery(
 			@RequestBody LlmRequest request,
 			@RequestHeader(value = "X-Staff-Id", required = true) Long staffId,
 			@RequestHeader(value = "X-Session-Id", required = false) String sessionId) {
@@ -39,15 +38,15 @@ public class ChatController {
 
 		String effectiveSessionId = sessionId != null ? sessionId : "session-" + staffId + "-" + System.currentTimeMillis();
 
-		return chatService.callRuleLlmApi(request.getQuery())
-				.doOnNext(answer -> {
-					try {
-						chatService.saveChatHistory(staffId, effectiveSessionId, request.getQuery(), answer);
-						log.info("Rule Q&A 저장 완료 - staffId: {}", staffId);
-					} catch (Exception e) {
-						log.error("Rule Q&A 히스토리 저장 실패 - staffId: {}, error: {}", staffId, e.getMessage(), e);
-					}
-				});
+		try {
+			String answer = chatService.callRuleLlmApi(request.getQuery()).block();
+			chatService.saveChatHistory(staffId, effectiveSessionId, request.getQuery(), answer);
+			log.info("Rule Q&A 저장 완료 - staffId: {}", staffId);
+			return answer;
+		} catch (Exception e) {
+			log.error("Rule Q&A 호출 실패 - staffId: {}, error: {}", staffId, e.getMessage(), e);
+			throw e;
+		}
 	}
 
 	@PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
