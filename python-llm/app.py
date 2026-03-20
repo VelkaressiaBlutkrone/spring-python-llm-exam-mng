@@ -92,6 +92,16 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Shared httpx client created")
 
+    # LLM 백엔드 초기화 (Strategy 패턴)
+    if settings.llm_backend == "vllm":
+        from vllm_backend import VllmBackend
+        app.state.llm = VllmBackend()
+        logger.info("LLM backend initialized: vLLM")
+    else:
+        from ollama_backend import OllamaBackend
+        app.state.llm = OllamaBackend()
+        logger.info("LLM backend initialized: Ollama")
+
     yield
 
     # shutdown
@@ -178,12 +188,8 @@ async def health():
     checks = {}
 
     # LLM 백엔드 체크
-    if settings.llm_backend == "vllm":
-        from vllm_service import check_vllm_health
-        checks["vllm"] = await check_vllm_health()
-    elif settings.llm_backend == "ollama":
-        from ollama_service import check_ollama_health
-        checks["ollama"] = await check_ollama_health()
+    llm = request.app.state.llm
+    checks["llm"] = await llm.health_check(client=request.app.state.http_client)
 
     # MySQL 체크
     checks["mysql"] = await _check_mysql_health()
@@ -195,9 +201,9 @@ async def health():
 
     # Circuit Breaker 상태
     if settings.llm_backend == "vllm":
-        from vllm_service import _breaker
+        from vllm_service import _breaker  # noqa: circuit breaker는 모듈별 싱글턴
     else:
-        from ollama_service import _breaker
+        from ollama_service import _breaker  # noqa
     return {
         "status": "healthy" if all_healthy else "degraded",
         "llm_backend": settings.llm_backend,
@@ -285,37 +291,14 @@ async def infer(request: Request, body: InferRequest) -> InferResponse:
     corrected = correct_typos(body.query)
 
     try:
-        if settings.llm_backend == "vllm":
-            from vllm_service import generate_with_vllm
-
-            generated_text = await generate_with_vllm(
-                query=corrected,
-                max_length=body.max_length,
-                temperature=body.temperature,
-                top_p=body.top_p or 1.0,
-                client=request.app.state.http_client,
-            )
-        elif settings.llm_backend == "ollama":
-            from ollama_service import generate_with_ollama
-
-            generated_text = await generate_with_ollama(
-                query=corrected,
-                max_length=body.max_length,
-                temperature=body.temperature,
-                top_p=body.top_p or 1.0,
-                client=request.app.state.http_client,
-            )
-        else:
-            # ollama (default fallback)
-            from llm_service import generate
-
-            generated_text = generate(
-                query=corrected,
-                max_length=body.max_length,
-                temperature=body.temperature,
-                top_p=body.top_p or 1.0,
-                num_return_sequences=body.num_return_sequences,
-            )
+        llm = request.app.state.llm
+        generated_text = await llm.generate(
+            query=corrected,
+            max_length=body.max_length,
+            temperature=body.temperature,
+            top_p=body.top_p or 1.0,
+            client=request.app.state.http_client,
+        )
     except Exception as exc:
         fallback = settings.llm_fallback_response
         if fallback:
@@ -372,25 +355,14 @@ async def infer_medical(request: Request, body: InferRequest) -> InferResponse:
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
 
     try:
-        if settings.llm_backend == "vllm":
-            from vllm_service import chat_with_vllm
-            raw_text = await chat_with_vllm(
-                messages=messages,
-                temperature=body.temperature,
-                max_length=body.max_length,
-                stop=stop_tokens,
-                client=request.app.state.http_client,
-            )
-        else:
-            # ollama (default fallback)
-            from ollama_service import chat_with_ollama
-            raw_text = await chat_with_ollama(
-                messages=messages,
-                temperature=body.temperature,
-                max_length=body.max_length,
-                stop=stop_tokens,
-                client=request.app.state.http_client,
-            )
+        llm = request.app.state.llm
+        raw_text = await llm.chat(
+            messages=messages,
+            temperature=body.temperature,
+            max_length=body.max_length,
+            stop=stop_tokens,
+            client=request.app.state.http_client,
+        )
     except Exception:
         _elapsed = (_time.time() - _start) * 1000
         metrics.record_request(latency_ms=_elapsed, success=False, vector_hit=len(medical_context) > 0)
@@ -436,15 +408,11 @@ async def infer_medical_stream(request: Request, body: InferRequest):
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
     http_client = request.app.state.http_client
 
-    if settings.llm_backend == "vllm":
-        from vllm_service import chat_with_vllm_stream as _chat_stream
-    else:
-        # ollama (default fallback)
-        from ollama_service import chat_with_ollama_stream as _chat_stream
+    llm = request.app.state.llm
 
     async def generate_sse():
         try:
-            async for item in _chat_stream(
+            async for item in llm.chat_stream(
                 messages=messages,
                 temperature=body.temperature,
                 max_length=body.max_length,
@@ -521,25 +489,14 @@ async def infer_rule(request: Request, body: InferRequest) -> InferResponse:
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
 
     try:
-        if settings.llm_backend == "vllm":
-            from vllm_service import chat_with_vllm
-            raw_text = await chat_with_vllm(
-                messages=messages,
-                temperature=body.temperature,
-                max_length=body.max_length,
-                stop=stop_tokens,
-                client=request.app.state.http_client,
-            )
-        else:
-            # ollama (default fallback)
-            from ollama_service import chat_with_ollama
-            raw_text = await chat_with_ollama(
-                messages=messages,
-                temperature=body.temperature,
-                max_length=body.max_length,
-                stop=stop_tokens,
-                client=request.app.state.http_client,
-            )
+        llm = request.app.state.llm
+        raw_text = await llm.chat(
+            messages=messages,
+            temperature=body.temperature,
+            max_length=body.max_length,
+            stop=stop_tokens,
+            client=request.app.state.http_client,
+        )
     except Exception:
         _elapsed = (_time.time() - _start) * 1000
         metrics.record_request(latency_ms=_elapsed, success=False, vector_hit=len(rule_context) > 0)
@@ -609,14 +566,11 @@ async def infer_rule_stream(request: Request, body: InferRequest):
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
     http_client = request.app.state.http_client
 
-    if settings.llm_backend == "vllm":
-        from vllm_service import chat_with_vllm_stream as _chat_stream
-    else:
-        from ollama_service import chat_with_ollama_stream as _chat_stream
+    llm = request.app.state.llm
 
     async def generate_sse():
         try:
-            async for item in _chat_stream(
+            async for item in llm.chat_stream(
                 messages=messages,
                 temperature=body.temperature,
                 max_length=body.max_length,
