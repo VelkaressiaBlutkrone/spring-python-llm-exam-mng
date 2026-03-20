@@ -1,18 +1,16 @@
--- MySQL 초기 설정: llm_user 생성 및 권한 부여
--- Bash:  docker exec -i app-db mysql -uroot -ppassword < scripts/init-mysql.sql
+-- MySQL 초기 설정: 애플리케이션 전용 사용자 생성 및 권한 부여
+-- Bash:  docker exec -i app-db mysql -uroot -p < scripts/init-mysql.sql
 -- PowerShell:  .\scripts\run-mysql-init.ps1
 
 CREATE DATABASE IF NOT EXISTS llm_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- root@'%' 생성 (호스트에서 Docker MySQL 접속 시 172.18.0.1로 인식됨)
-DROP USER IF EXISTS 'root'@'%';
-CREATE USER 'root'@'%' IDENTIFIED BY 'rootpassword';
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+-- llm_admin (애플리케이션용 - 최소 권한)
+-- 비밀번호는 docker-compose.yml의 MYSQL_PASSWORD 환경변수로 설정됨
+-- docker-compose의 MYSQL_USER/MYSQL_PASSWORD로 자동 생성되므로
+-- 아래는 수동 실행 시에만 사용
 
--- llm_user (애플리케이션용)
-DROP USER IF EXISTS 'llm_user'@'%';
-DROP USER IF EXISTS 'llm_user'@'localhost';
-CREATE USER 'llm_user'@'%' IDENTIFIED BY 'llm_user_1234';
-GRANT ALL PRIVILEGES ON llm_db.* TO 'llm_user'@'%';
+-- llm_admin에게 llm_db에 대한 권한만 부여 (전체 권한 아님)
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP
+    ON llm_db.* TO 'llm_admin'@'%';
 
 FLUSH PRIVILEGES;

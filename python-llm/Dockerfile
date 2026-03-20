@@ -10,9 +10,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# non-root 사용자 생성
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 # 소스 복사
 COPY *.py ./
 COPY prompts/ ./prompts/
+
+# 소유권 변경 및 non-root 전환
+RUN chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8000
 

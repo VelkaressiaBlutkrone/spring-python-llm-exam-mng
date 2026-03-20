@@ -1,6 +1,9 @@
 """
-추론 메트릭 수집 모듈
-요청 수, 성공/실패, 평균 지연, 벡터 검색 적중률 등을 추적한다.
+인메모리 추론 메트릭(프로세스 단위).
+
+``record_request`` 호출 시마다 ``vector_search_total`` 은 증가하고,
+컨텍스트가 비어 있지 않았을 때만 ``vector_search_hits`` 가 올라간다
+(의학/규칙 엔드포인트에서 ``vector_hit=`` 로 전달).
 """
 
 import threading

@@ -4,6 +4,7 @@ import com.sample.llm.dto.DoctorDto;
 import com.sample.llm.dto.DoctorScheduleDto;
 import com.sample.llm.dto.DoctorWithScheduleDto;
 import com.sample.llm.entity.Doctor;
+import com.sample.llm.entity.DoctorSchedule;
 import com.sample.llm.repository.DoctorRepository;
 import com.sample.llm.repository.DoctorScheduleRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -46,15 +49,18 @@ public class DoctorService {
 		String normalized = normalizeDepartment(department);
 		List<Doctor> doctors = doctorRepository.findByDepartmentAndIsActiveTrue(normalized);
 
+		List<Long> doctorIds = doctors.stream().map(Doctor::getId).toList();
+		List<DoctorSchedule> allSchedules = doctorScheduleRepository
+				.findByDoctorIdInAndIsAvailableTrue(doctorIds);
+
+		Map<Long, List<DoctorScheduleDto>> scheduleMap = allSchedules.stream()
+				.collect(Collectors.groupingBy(
+						s -> s.getDoctor().getId(),
+						Collectors.mapping(DoctorScheduleDto::from, Collectors.toList())));
+
 		return doctors.stream()
-				.map(doctor -> {
-					List<DoctorScheduleDto> schedules = doctorScheduleRepository
-							.findByDoctorIdAndIsAvailableTrue(doctor.getId())
-							.stream()
-							.map(DoctorScheduleDto::from)
-							.toList();
-					return DoctorWithScheduleDto.from(doctor, schedules);
-				})
+				.map(doctor -> DoctorWithScheduleDto.from(doctor,
+						scheduleMap.getOrDefault(doctor.getId(), List.of())))
 				.toList();
 	}
 

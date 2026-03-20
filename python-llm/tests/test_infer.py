@@ -1,6 +1,6 @@
-"""
-/infer 엔드포인트 테스트
-LLM_FALLBACK_MOCK=1로 mock 응답 사용 (conftest.py)
+"""``POST /infer``, ``GET /``, ``GET /health`` 스키마·상태 코드 검증.
+
+실제 LLM 대신 ``conftest`` 의 ``llm_service`` 모킹을 사용한다.
 """
 
 import pytest

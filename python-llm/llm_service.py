@@ -1,6 +1,9 @@
 """
-LLM 모델 로딩 및 추론 서비스
-Hugging Face Transformers pipeline 사용
+로컬 Hugging Face ``transformers`` 파이프라인 기반 텍스트 생성.
+
+- ``/infer`` 에서 ``LLM_BACKEND`` 가 huggingface 계열(기본 외 백엔드 미사용)일 때 사용.
+- 동기(blocking) 추론이므로 ``generate()`` 안에서 ``ThreadPoolExecutor`` 로
+  타임아웃만 적용한다(이벤트 루프를 막지 않으려면 vLLM/Ollama 경로를 쓴다).
 """
 
 import logging
@@ -144,6 +147,7 @@ def generate(
     if not processed_query:
         return ""
 
+    # 파이프라인은 CPU/GPU에서 블로킹되므로 별도 스레드에서 실행하고 메인에서 timeout 대기
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(
             _generate_internal,

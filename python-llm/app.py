@@ -1,6 +1,23 @@
 """
-LLM 추론 서버 - FastAPI 앱
-PRD 기반: Spring Boot에서 HTTP 호출, RAG 없이 순수 LLM 추론
+LLM 추론 서버 — FastAPI 애플리케이션.
+
+역할:
+    Spring Boot 등 백엔드가 HTTP로 호출하는 LLM 게이트웨이. 백엔드는
+    ``LLM_BACKEND``(vllm | ollama)에 따라 원격 추론 서버로 위임하거나,
+    로컬 Hugging Face 파이프라인(``llm_service``)을 사용한다.
+
+주요 라우트:
+    ``GET /`` — 서버 가동 확인
+    ``GET /health`` — LLM·MySQL·ChromaDB·서킷 브레이커 상태
+    ``GET /metrics`` — 추론 지연·성공률·벡터 적중 등 집계
+    ``POST /infer`` — 순수 생성 (RAG 없음)
+    ``POST /infer/medical`` · ``POST /infer/medical/stream`` — 의학 컨텍스트(RAG) + 채팅
+    ``POST /infer/rule`` · ``POST /infer/rule/stream`` — 병원 규칙 RAG + 채팅
+    ``POST /feedback`` · ``GET /feedback/stats`` — 응답 품질 피드백(MySQL)
+    ``POST /typo/reload`` — 오타 사전 DB 리로드
+
+공통 처리:
+    slowapi 요청 제한, CORS, 공유 ``httpx.AsyncClient``, 예외 시 일관된 JSON 오류 응답.
 """
 
 import logging
@@ -9,9 +26,10 @@ from contextlib import asynccontextmanager
 
 import json
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.security import APIKeyHeader
 
 import httpx
 
@@ -29,12 +47,29 @@ import aiomysql
 from schemas import InferRequest, InferResponse, FeedbackRequest, FeedbackResponse
 from typo_corrector import correct_typos
 
-# 로깅 설정
+# ---------------------------------------------------------------------------
+# 로깅
+# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# 관리 엔드포인트 API Key 인증
+# ---------------------------------------------------------------------------
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_admin_api_key(api_key: str = Security(api_key_header)):
+    """관리 엔드포인트용 API Key 검증. admin_api_key가 설정되지 않으면 인증을 건너뜁니다."""
+    settings = get_settings()
+    if not settings.admin_api_key:
+        return  # API Key 미설정 시 인증 비활성화 (개발 편의)
+    if api_key != settings.admin_api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -72,7 +107,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Rate Limiting
+# ---------------------------------------------------------------------------
+# Rate limiting (IP 기준, slowapi)
+# ---------------------------------------------------------------------------
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -94,14 +131,14 @@ def root():
     return {"status": "ok", "message": "LLM Inference API"}
 
 
-@app.get("/metrics")
+@app.get("/metrics", dependencies=[Depends(verify_admin_api_key)])
 @limiter.limit("30/minute")
 def get_metrics(request: Request):
     """추론 메트릭 조회"""
     return metrics.to_dict()
 
 
-@app.post("/typo/reload")
+@app.post("/typo/reload", dependencies=[Depends(verify_admin_api_key)])
 @limiter.limit("2/minute")
 async def typo_reload(request: Request):
     """오타 사전 DB에서 리로드"""
@@ -169,6 +206,11 @@ async def health():
     }
 
 
+# ---------------------------------------------------------------------------
+# 예외 → JSON 응답 (클라이언트·로드밸런서가 일관되게 처리하도록)
+# ---------------------------------------------------------------------------
+
+
 @app.exception_handler(TimeoutError)
 def timeout_handler(request: Request, exc: TimeoutError):
     """추론 타임아웃 시 503 반환"""
@@ -194,7 +236,7 @@ def runtime_error_handler(request: Request, exc: RuntimeError):
 def connection_error_handler(request: Request, exc: ConnectionError):
     """Ollama/외부 서버 연결 실패 시 503 반환"""
     logger.error("Connection error: %s", exc)
-    detail = str(exc) if str(exc) else "LLM 서버에 연결할 수 없습니다. 서버 실행 여부를 확인하세요."
+    detail = "LLM 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."
     return JSONResponse(status_code=503, content={"detail": detail})
 
 
@@ -203,9 +245,9 @@ def os_error_handler(request: Request, exc: OSError):
     """모델 로딩 실패(DLL 등) 503 반환"""
     logger.error("OS error: %s", exc)
     if isinstance(exc, ConnectionError):
-        detail = str(exc) if str(exc) else "LLM 서버에 연결할 수 없습니다. 서버 실행 여부를 확인하세요."
+        detail = "LLM 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."
         return JSONResponse(status_code=503, content={"detail": detail})
-    return JSONResponse(status_code=503, content={"detail": "LLM 모델 로딩 실패"})
+    return JSONResponse(status_code=503, content={"detail": "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."})
 
 
 @app.exception_handler(ServiceUnavailableError)
@@ -280,6 +322,8 @@ async def infer(request: Request, body: InferRequest) -> InferResponse:
             logger.warning("LLM failed: %s, using fallback response", exc)
             generated_text = fallback
         else:
+            _elapsed = (_time.time() - _start) * 1000
+            metrics.record_request(latency_ms=_elapsed, success=False)
             raise
 
     _elapsed = (_time.time() - _start) * 1000
@@ -327,25 +371,31 @@ async def infer_medical(request: Request, body: InferRequest) -> InferResponse:
     # (3) LLM Chat API 호출 (vLLM 또는 Ollama)
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
 
-    if settings.llm_backend == "vllm":
-        from vllm_service import chat_with_vllm
-        raw_text = await chat_with_vllm(
-            messages=messages,
-            temperature=body.temperature,
-            max_length=body.max_length,
-            stop=stop_tokens,
-            client=request.app.state.http_client,
-        )
-    else:
-        # ollama (default fallback)
-        from ollama_service import chat_with_ollama
-        raw_text = await chat_with_ollama(
-            messages=messages,
-            temperature=body.temperature,
-            max_length=body.max_length,
-            stop=stop_tokens,
-            client=request.app.state.http_client,
-        )
+    try:
+        if settings.llm_backend == "vllm":
+            from vllm_service import chat_with_vllm
+            raw_text = await chat_with_vllm(
+                messages=messages,
+                temperature=body.temperature,
+                max_length=body.max_length,
+                stop=stop_tokens,
+                client=request.app.state.http_client,
+            )
+        else:
+            # ollama (default fallback)
+            from ollama_service import chat_with_ollama
+            raw_text = await chat_with_ollama(
+                messages=messages,
+                temperature=body.temperature,
+                max_length=body.max_length,
+                stop=stop_tokens,
+                client=request.app.state.http_client,
+            )
+    except Exception:
+        _elapsed = (_time.time() - _start) * 1000
+        metrics.record_request(latency_ms=_elapsed, success=False, vector_hit=len(medical_context) > 0)
+        raise
+
     generated_text = clean_llm_response(raw_text)
 
     _elapsed = (_time.time() - _start) * 1000
@@ -412,8 +462,8 @@ async def infer_medical_stream(request: Request, body: InferRequest):
                 if item.get("done"):
                     yield "data: [DONE]\n\n"
         except Exception as exc:
-            logger.error("Stream error: %s", exc)
-            error_data = json.dumps({"error": str(exc)}, ensure_ascii=False)
+            logger.error("Stream error: %s", exc, exc_info=True)
+            error_data = json.dumps({"error": "응답 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
 
     return StreamingResponse(
@@ -470,25 +520,31 @@ async def infer_rule(request: Request, body: InferRequest) -> InferResponse:
 
     stop_tokens = ["<|im_start|>", "<|im_end|>", "<|endoftext|>", "，。，", "。，。"]
 
-    if settings.llm_backend == "vllm":
-        from vllm_service import chat_with_vllm
-        raw_text = await chat_with_vllm(
-            messages=messages,
-            temperature=body.temperature,
-            max_length=body.max_length,
-            stop=stop_tokens,
-            client=request.app.state.http_client,
-        )
-    else:
-        # ollama (default fallback)
-        from ollama_service import chat_with_ollama
-        raw_text = await chat_with_ollama(
-            messages=messages,
-            temperature=body.temperature,
-            max_length=body.max_length,
-            stop=stop_tokens,
-            client=request.app.state.http_client,
-        )
+    try:
+        if settings.llm_backend == "vllm":
+            from vllm_service import chat_with_vllm
+            raw_text = await chat_with_vllm(
+                messages=messages,
+                temperature=body.temperature,
+                max_length=body.max_length,
+                stop=stop_tokens,
+                client=request.app.state.http_client,
+            )
+        else:
+            # ollama (default fallback)
+            from ollama_service import chat_with_ollama
+            raw_text = await chat_with_ollama(
+                messages=messages,
+                temperature=body.temperature,
+                max_length=body.max_length,
+                stop=stop_tokens,
+                client=request.app.state.http_client,
+            )
+    except Exception:
+        _elapsed = (_time.time() - _start) * 1000
+        metrics.record_request(latency_ms=_elapsed, success=False, vector_hit=len(rule_context) > 0)
+        raise
+
     generated_text = clean_llm_response(raw_text)
 
     _elapsed = (_time.time() - _start) * 1000
@@ -577,8 +633,8 @@ async def infer_rule_stream(request: Request, body: InferRequest):
                 if item.get("done"):
                     yield "data: [DONE]\n\n"
         except Exception as exc:
-            logger.error("Rule stream error: %s", exc)
-            error_data = json.dumps({"error": str(exc)}, ensure_ascii=False)
+            logger.error("Rule stream error: %s", exc, exc_info=True)
+            error_data = json.dumps({"error": "응답 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."}, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
 
     return StreamingResponse(
@@ -615,11 +671,14 @@ async def submit_feedback(request: Request, body: FeedbackRequest) -> FeedbackRe
             await conn.commit()
         return FeedbackResponse()
     except Exception as exc:
-        logger.error("Failed to save feedback: %s", exc)
-        return JSONResponse(status_code=500, content={"detail": "피드백 저장에 실패했습니다"})
+        logger.error("Feedback error: %s", exc, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": "피드백 처리 중 오류가 발생했습니다."}
+        )
 
 
-@app.get("/feedback/stats")
+@app.get("/feedback/stats", dependencies=[Depends(verify_admin_api_key)])
 async def feedback_stats():
     """피드백 통계 조회"""
     try:
@@ -639,8 +698,11 @@ async def feedback_stats():
                 stats = await cur.fetchall()
         return {"status": "ok", "stats": stats}
     except Exception as exc:
-        logger.error("Failed to get feedback stats: %s", exc)
-        return JSONResponse(status_code=500, content={"detail": "통계 조회에 실패했습니다"})
+        logger.error("Feedback error: %s", exc, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": "피드백 처리 중 오류가 발생했습니다."}
+        )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 package com.sample.llm.service;
 
+import com.sample.llm.dto.ChatHistoryResponse;
 import com.sample.llm.dto.LlmResponse;
 import com.sample.llm.entity.ChatHistory;
 import com.sample.llm.entity.Staff;
@@ -10,6 +11,8 @@ import com.sample.llm.repository.StaffRepository;
 import io.netty.channel.ConnectTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -86,5 +89,10 @@ public class ChatService {
 		ChatHistory saved = chatHistoryRepository.save(history);
 		log.debug("ChatHistory 저장 - id: {}, staffId: {}", saved.getId(), staffId);
 		return saved;
+	}
+
+	public Page<ChatHistoryResponse> getChatHistory(Long staffId, Pageable pageable) {
+		return chatHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(staffId, pageable)
+				.map(ChatHistoryResponse::from);
 	}
 }

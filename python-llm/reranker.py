@@ -1,6 +1,9 @@
 """
-검색 결과 Re-ranking 모듈
-Ollama LLM을 활용한 경량 관련성 재정렬
+벡터 검색 상위 결과를 질의 관련성으로 재정렬(옵션).
+
+주의:
+    ``use_reranking=True`` 일 때 점수 산출은 **항상** ``generate_with_ollama`` 를
+    쓴다. 메인 추론이 vLLM이어도 Ollama가 별도로 떠 있어야 재랭킹이 동작한다.
 """
 
 import logging

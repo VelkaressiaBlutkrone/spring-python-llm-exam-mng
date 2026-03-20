@@ -1,11 +1,11 @@
 """
-병원규칙 JSON -> MySQL + ChromaDB 벡터 인덱싱 스크립트
+``llm_data/medical_rules.json`` → MySQL ``medical_rule`` + Chroma 규칙 컬렉션.
 
-사용법:
-    python index_rule_data.py
+1) JSON 배열을 읽어 제목 중복은 스킵하고 MySQL에 INSERT.
+2) 새로 넣은 행만 임베딩하여 ``chroma_rule_collection`` 에 upsert.
 
-Ollama 임베딩 모델이 필요합니다:
-    ollama pull nomic-embed-text
+사용법: ``python index_rule_data.py``  
+임베딩: ``ollama pull nomic-embed-text`` (또는 설정의 embed 모델)
 """
 
 import asyncio

@@ -1,8 +1,4 @@
-"""
-의학 컨텍스트 서비스 테스트
-- extract_keywords 단위 테스트
-- /infer/medical 엔드포인트 테스트 (Ollama mock)
-"""
+"""``medical_context_service.extract_keywords`` 및 ``/infer/medical`` 라우트 존재·검증."""
 
 import pytest
 from unittest.mock import AsyncMock, patch

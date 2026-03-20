@@ -1,6 +1,9 @@
 """
-설정 관리 - Pydantic Settings
-환경변수 또는 .env 파일에서 로드
+애플리케이션 설정 — ``pydantic-settings``.
+
+- 환경 변수와 선택적 ``.env`` 파일에서 값을 읽는다.
+- ``get_settings()``는 ``lru_cache``로 한 번만 인스턴스화한다(프로세스 내 단일 설정).
+- 배포 시 ``MYSQL_PASSWORD``, ``LLM_BACKEND`` 등은 환경 변수로 주입하는 것을 권장한다.
 """
 
 from functools import lru_cache
@@ -59,6 +62,9 @@ class Settings(BaseSettings):
     mysql_user: str = Field(default="root", description="MySQL 사용자")
     mysql_password: str = Field(default="", description="MySQL 비밀번호 (환경변수 MYSQL_PASSWORD 필수)")
     mysql_db: str = Field(default="llm_db", description="MySQL 데이터베이스명")
+
+    # 관리 엔드포인트 인증
+    admin_api_key: str = Field(default="", description="관리 엔드포인트 API Key (빈 값이면 인증 비활성화)")
 
     # CORS
     cors_origins: str = Field(default="http://localhost:8080,http://127.0.0.1:8080", description="허용 CORS origins (콤마 구분)")

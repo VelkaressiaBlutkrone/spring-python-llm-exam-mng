@@ -162,12 +162,12 @@
 
       <div class="card-grid">
         <a href="/medical.html" class="hub-card">
-          <div class="hub-card-icon medical">&#x1F3E5;</div>
+          <div class="hub-card-icon medical" aria-hidden="true">&#x1F3E5;</div>
           <div class="hub-card-title">질병 Q&A</div>
           <div class="hub-card-desc">증상을 입력하면 AI가 추천 진료과와 의사 목록을 안내합니다.</div>
         </a>
         <a href="/chat.html" class="hub-card">
-          <div class="hub-card-icon chat">&#x1F4CB;</div>
+          <div class="hub-card-icon chat" aria-hidden="true">&#x1F4CB;</div>
           <div class="hub-card-title">의학지식 / 병원규칙</div>
           <div class="hub-card-desc">병원 내부 규칙, 당직, 물품, 위생 등에 대해 AI에게 질문하세요.</div>
         </a>
@@ -179,10 +179,8 @@
         var dot = document.getElementById("statusDot");
         var text = document.getElementById("statusText");
         try {
-          await fetch("/api/medical/query", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: "ping" }),
+          await fetch("/api/medical/history/1?size=0", {
+            method: "GET",
             signal: AbortSignal.timeout(5000),
           });
           dot.classList.remove("offline");

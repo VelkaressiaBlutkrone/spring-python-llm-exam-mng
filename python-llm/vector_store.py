@@ -1,6 +1,8 @@
 """
-ChromaDB 벡터 저장소
-Ollama 임베딩 + ChromaDB로 의학 문서 벡터 검색
+ChromaDB HTTP 클라이언트 — 의학 문서 컬렉션 + 병원 규칙 전용 컬렉션.
+
+- 임베딩은 ``embedding_service`` 에서 생성한 뒤 ``upsert`` 로 적재한다.
+- ``metadata={"hnsw:space": "cosine"}`` 로 거리 해석을 코사인 기준에 맞춘다.
 """
 
 import logging
@@ -11,6 +13,7 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 프로세스당 Chroma 연결·컬렉션 핸들을 한 번만 만든다(지연 초기화)
 _client = None
 _collection = None
 _rule_collection = None
