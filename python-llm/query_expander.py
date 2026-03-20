@@ -1,6 +1,8 @@
 """
-쿼리 확장 모듈
-짧은 구어체 질문을 의학 용어로 확장하여 벡터/FULLTEXT 검색 재현율을 높인다.
+선택적 LLM 기반 쿼리 확장 — ``USE_QUERY_EXPANSION=true`` 일 때만 동작.
+
+짧은 질문 뒤에 관련 의학 키워드를 붙여 ``build_medical_context`` 의
+벡터·FULLTEXT 검색 재현율을 높인다(추가 LLM 호출 1회).
 """
 
 import logging

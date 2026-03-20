@@ -1,6 +1,7 @@
 """
-요청/응답 스키마 정의
-Spring Boot와 JSON 형식 협의
+API 요청/응답 바디 — Pydantic 모델.
+
+FastAPI가 OpenAPI·유효성 검증에 사용하며, Spring 쪽 DTO와 필드명·타입을 맞춘다.
 """
 
 from pydantic import BaseModel, Field
@@ -31,7 +32,7 @@ class InferResponse(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    """피드백 요청"""
+    """사용자가 남긴 응답 품질 피드백(점수·코멘트) — ``llm_feedback`` 테이블에 저장."""
     session_id: str | None = None
     query: str = Field(..., min_length=1, max_length=2048)
     response: str = Field(..., min_length=1, max_length=8192)
@@ -41,6 +42,6 @@ class FeedbackRequest(BaseModel):
 
 
 class FeedbackResponse(BaseModel):
-    """피드백 응답"""
+    """피드백 저장 성공 시 기본 메시지."""
     status: str = "ok"
     message: str = "피드백이 저장되었습니다"

@@ -333,6 +333,21 @@
       }
       .send-btn:hover { background: #1d4ed8; }
       .send-btn:disabled { background: var(--surface-light); color: var(--text-muted); cursor: not-allowed; }
+      #stopBtn {
+        width: 46px; height: 46px;
+        border: none;
+        border-radius: 12px;
+        background: #ef4444;
+        color: #fff;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.15s;
+        flex-shrink: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      #stopBtn:hover { background: #dc2626; }
 
       .message.error .message-bubble {
         background: var(--red-bg);
@@ -404,6 +419,7 @@
       <div class="chat-input-wrapper">
         <textarea id="chatInput" rows="1" placeholder="증상을 입력해 주세요..." oninput="autoResize(this)"></textarea>
         <button class="send-btn" id="sendBtn" onclick="submitQuery()">&#9654;</button>
+        <button id="stopBtn" onclick="stopStreaming()" title="중지">&#9632;</button>
       </div>
     </div>
 
@@ -413,6 +429,7 @@
       var RESERVATION_URL = "/api/reservation";
       var SLOTS_URL = "/api/reservation/slots";
       var chatHistory = [];
+      var currentAbortController = null;
 
       function autoResize(el) {
         el.style.height = "auto";
@@ -494,27 +511,30 @@
         document.getElementById("quickChips").style.display = "none";
         scrollToBottom();
         var currentBubble = null;
+        var aborted = false;
         var streamPromise = streamResponse(query, function(bubble) { currentBubble = bubble; }).catch(function (err) {
+          if (err.name === "AbortError") { aborted = true; return ""; }
           console.warn("스트리밍 실패:", err);
           return "";
         });
         var doctorPromise = fetchDoctorData(query);
         var streamedText = await streamPromise;
-        try {
-          var data = await doctorPromise;
-          if (streamedText && data.recommendedDepartment) {
-            cleanStreamedResponse(streamedText, data, currentBubble);
-          } else if (!streamedText) {
-            renderLlmResponse(data);
+        if (!aborted) {
+          try {
+            var data = await doctorPromise;
+            if (streamedText && data.recommendedDepartment) {
+              cleanStreamedResponse(streamedText, data, currentBubble);
+            } else if (!streamedText) {
+              renderLlmResponse(data);
+            }
+            renderDoctorCards(data);
+          } catch (error) {
+            if (!streamedText) addMessage("error", "오류: " + error.message);
           }
-          renderDoctorCards(data);
-        } catch (error) {
-          if (!streamedText) addMessage("error", "오류: " + error.message);
-        } finally {
-          document.getElementById("sendBtn").disabled = false;
-          document.getElementById("typingIndicator").classList.remove("active");
-          input.focus();
         }
+        document.getElementById("sendBtn").disabled = false;
+        document.getElementById("typingIndicator").classList.remove("active");
+        input.focus();
       }
       async function fetchDoctorData(query) {
         var response = await fetch(CONSULT_URL, {
@@ -529,45 +549,74 @@
         return response.json();
       }
       async function streamResponse(query, onBubbleCreated) {
+        currentAbortController = new AbortController();
+        var timeoutId = setTimeout(function() {
+          if (currentAbortController) currentAbortController.abort();
+        }, 60000);
+        document.getElementById("stopBtn").style.display = "inline-flex";
+        document.getElementById("sendBtn").style.display = "none";
         var bubble = addStreamBubble();
         if (onBubbleCreated) onBubbleCreated(bubble);
         bubble.textContent = "";
-        var response = await fetch(STREAM_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: query, max_length: 512, temperature: 0.3, history: chatHistory.slice(-6) }),
-        });
-        if (!response.ok) throw new Error("스트리밍 오류 (" + response.status + ")");
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-        var fullText = "";
-        var buffer = "";
-        var firstToken = true;
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
-          buffer += decoder.decode(result.value, { stream: true });
-          var lines = buffer.split("\n");
-          buffer = lines.pop();
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-            if (!line.startsWith("data:")) continue;
-            var sseData = line.substring(5).trim();
-            if (sseData === "[DONE]") continue;
-            try {
-              var parsed = JSON.parse(sseData);
-              if (parsed.error) throw new Error(parsed.error);
-              if (parsed.token) {
-                if (firstToken) { firstToken = false; bubble.parentElement.style.display = ""; document.getElementById("typingIndicator").classList.remove("active"); }
-                fullText += parsed.token;
-                bubble.innerHTML = renderMarkdown(fullText);
-                scrollToBottom();
-              }
-            } catch (e) { /* ignore */ }
+        try {
+          var response = await fetch(STREAM_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: query, max_length: 512, temperature: 0.3, history: chatHistory.slice(-6) }),
+            signal: currentAbortController.signal,
+          });
+          if (!response.ok) throw new Error("스트리밍 오류 (" + response.status + ")");
+          var reader = response.body.getReader();
+          var decoder = new TextDecoder();
+          var fullText = "";
+          var buffer = "";
+          var firstToken = true;
+          while (true) {
+            var result = await reader.read();
+            if (result.done) break;
+            buffer += decoder.decode(result.value, { stream: true });
+            var lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i];
+              if (!line.startsWith("data:")) continue;
+              var sseData = line.substring(5).trim();
+              if (sseData === "[DONE]") continue;
+              try {
+                var parsed = JSON.parse(sseData);
+                if (parsed.error) throw new Error(parsed.error);
+                if (parsed.token) {
+                  if (firstToken) { firstToken = false; bubble.parentElement.style.display = ""; document.getElementById("typingIndicator").classList.remove("active"); }
+                  fullText += parsed.token;
+                  bubble.innerHTML = renderMarkdown(fullText);
+                  scrollToBottom();
+                }
+              } catch (e) { /* ignore */ }
+            }
           }
+          chatHistory.push({ role: "assistant", content: fullText });
+          return fullText;
+        } catch (err) {
+          if (err.name === "AbortError") {
+            if (bubble.parentElement) {
+              if (!bubble.textContent) {
+                bubble.parentElement.remove();
+              }
+            }
+            addMessage("bot", "응답이 중단되었습니다.");
+          }
+          throw err;
+        } finally {
+          clearTimeout(timeoutId);
+          currentAbortController = null;
+          document.getElementById("stopBtn").style.display = "none";
+          document.getElementById("sendBtn").style.display = "inline-flex";
         }
-        chatHistory.push({ role: "assistant", content: fullText });
-        return fullText;
+      }
+      function stopStreaming() {
+        if (currentAbortController) {
+          currentAbortController.abort();
+        }
       }
       function cleanStreamedResponse(streamedText, data, bubble) {
         var text = streamedText;

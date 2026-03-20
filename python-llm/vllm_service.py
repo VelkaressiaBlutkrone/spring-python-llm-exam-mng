@@ -1,6 +1,8 @@
 """
-vLLM LLM 서비스
-OpenAI 호환 API를 통한 LLM 추론 (vLLM 서버)
+vLLM OpenAI 호환 HTTP API 클라이언트.
+
+- ``/v1/completions`` (단일 프롬프트), ``/v1/chat/completions`` (메시지 배열·스트리밍).
+- 엔드포인트·모델명은 ``config.Settings`` 의 ``vllm_*`` 필드로 지정.
 """
 
 import json
@@ -11,6 +13,7 @@ import httpx
 from circuit_breaker import CircuitBreaker, ServiceUnavailableError
 from config import get_settings
 
+# vLLM 서버 연속 실패 시 서킷 오픈(ollama_service 와 동일 정책)
 _breaker = CircuitBreaker(failure_threshold=5, reset_timeout=30.0)
 
 logger = logging.getLogger(__name__)

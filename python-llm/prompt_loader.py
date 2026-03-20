@@ -1,4 +1,9 @@
-"""프롬프트 파일 로더"""
+"""
+``prompts/*.txt`` 시스템 프롬프트 로더.
+
+- 허용 이름은 ``ALLOWED_PROMPTS`` 로 화이트리스트(임의 경로 읽기 방지).
+- ``load_prompt`` 는 ``lru_cache`` 로 파일 I/O를 한 번만 수행한다.
+"""
 import logging
 from functools import lru_cache
 from pathlib import Path

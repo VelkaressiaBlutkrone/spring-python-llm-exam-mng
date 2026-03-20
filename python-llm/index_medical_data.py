@@ -1,12 +1,15 @@
 """
-MySQL 의학 데이터 → ChromaDB 벡터 인덱싱 스크립트
+MySQL 의학 Q&A·콘텐츠 → Ollama 임베딩 → Chroma ``medical_docs`` 컬렉션.
+
+- Q&A: 질문+답 일부를 한 덩어리로 임베딩.
+- 긴 콘텐츠: ``chunker.chunk_text`` 로 나눈 뒤 청크별 ID로 upsert.
+- ``.index_meta.json`` 에 마지막 시각을 저장해 ``--full`` 없으면 증분만 처리.
 
 사용법:
-    python index_medical_data.py          # 증분 인덱싱 (기본)
-    python index_medical_data.py --full   # 전체 재인덱싱
+    python index_medical_data.py          # 증분
+    python index_medical_data.py --full   # 전체
 
-Ollama 임베딩 모델이 필요합니다:
-    ollama pull nomic-embed-text
+필수: ``ollama pull <ollama_embed_model>`` (기본 nomic-embed-text)
 """
 
 import asyncio

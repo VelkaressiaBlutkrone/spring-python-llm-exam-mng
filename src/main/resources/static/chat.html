@@ -208,6 +208,21 @@
       }
       .send-btn:hover { background: #047857; }
       .send-btn:disabled { background: var(--surface-light); color: var(--text-muted); cursor: not-allowed; }
+      #stopBtn {
+        width: 46px; height: 46px;
+        border: none;
+        border-radius: 12px;
+        background: #ef4444;
+        color: #fff;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.15s;
+        flex-shrink: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      #stopBtn:hover { background: #dc2626; }
 
       .message.error .message-bubble {
         background: var(--red-bg);
@@ -257,6 +272,7 @@
       <div class="chat-input-wrapper">
         <textarea id="chatInput" rows="1" placeholder="질문을 입력하세요..." oninput="autoResize(this)"></textarea>
         <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#9654;</button>
+        <button id="stopBtn" onclick="stopStreaming()" title="중지">&#9632;</button>
       </div>
     </div>
 
@@ -265,6 +281,7 @@
       var FALLBACK_URL = "/api/chat/query";
       var STAFF_ID = 1;
       var chatHistory = [];
+      var currentAbortController = null;
 
       function autoResize(el) {
         el.style.height = "auto";
@@ -340,7 +357,11 @@
           var answer = await streamResponse(query);
           if (answer) { chatHistory.push({ role: "assistant", content: answer }); answered = true; }
         } catch (streamErr) {
-          console.warn("스트리밍 실패, 폴백 사용:", streamErr);
+          if (streamErr.name === "AbortError") {
+            answered = true;
+          } else {
+            console.warn("스트리밍 실패, 폴백 사용:", streamErr);
+          }
         }
         if (!answered) {
           try {
@@ -365,43 +386,72 @@
         input.focus();
       }
       async function streamResponse(query) {
+        currentAbortController = new AbortController();
+        var timeoutId = setTimeout(function() {
+          if (currentAbortController) currentAbortController.abort();
+        }, 60000);
+        document.getElementById("stopBtn").style.display = "inline-flex";
+        document.getElementById("sendBtn").style.display = "none";
         var bubble = addStreamBubble();
-        var response = await fetch(STREAM_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Staff-Id": STAFF_ID },
-          body: JSON.stringify({ query: query, max_length: 512, temperature: 0.3, history: chatHistory.slice(-6) }),
-        });
-        if (!response.ok) throw new Error("스트리밍 오류 (" + response.status + ")");
-        var reader = response.body.getReader();
-        var decoder = new TextDecoder();
-        var fullText = "";
-        var buffer = "";
-        var firstToken = true;
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
-          buffer += decoder.decode(result.value, { stream: true });
-          var lines = buffer.split("\n");
-          buffer = lines.pop();
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-            if (!line.startsWith("data:")) continue;
-            var sseData = line.substring(5).trim();
-            if (sseData === "[DONE]") continue;
-            try {
-              var parsed = JSON.parse(sseData);
-              if (parsed.error) throw new Error(parsed.error);
-              if (parsed.token) {
-                if (firstToken) { firstToken = false; bubble.parentElement.style.display = ""; document.getElementById("typingIndicator").classList.remove("active"); }
-                fullText += parsed.token;
-                bubble.innerHTML = renderMarkdown(fullText);
-                scrollToBottom();
-              }
-            } catch (e) { /* ignore */ }
+        try {
+          var response = await fetch(STREAM_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Staff-Id": STAFF_ID },
+            body: JSON.stringify({ query: query, max_length: 512, temperature: 0.3, history: chatHistory.slice(-6) }),
+            signal: currentAbortController.signal,
+          });
+          if (!response.ok) throw new Error("스트리밍 오류 (" + response.status + ")");
+          var reader = response.body.getReader();
+          var decoder = new TextDecoder();
+          var fullText = "";
+          var buffer = "";
+          var firstToken = true;
+          while (true) {
+            var result = await reader.read();
+            if (result.done) break;
+            buffer += decoder.decode(result.value, { stream: true });
+            var lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i];
+              if (!line.startsWith("data:")) continue;
+              var sseData = line.substring(5).trim();
+              if (sseData === "[DONE]") continue;
+              try {
+                var parsed = JSON.parse(sseData);
+                if (parsed.error) throw new Error(parsed.error);
+                if (parsed.token) {
+                  if (firstToken) { firstToken = false; bubble.parentElement.style.display = ""; document.getElementById("typingIndicator").classList.remove("active"); }
+                  fullText += parsed.token;
+                  bubble.innerHTML = renderMarkdown(fullText);
+                  scrollToBottom();
+                }
+              } catch (e) { /* ignore */ }
+            }
           }
+          if (!fullText) { bubble.parentElement.remove(); throw new Error("빈 응답"); }
+          return fullText;
+        } catch (err) {
+          if (err.name === "AbortError") {
+            if (bubble.parentElement) {
+              if (!bubble.textContent) {
+                bubble.parentElement.remove();
+              }
+            }
+            addMessage("bot", "응답이 중단되었습니다.");
+          }
+          throw err;
+        } finally {
+          clearTimeout(timeoutId);
+          currentAbortController = null;
+          document.getElementById("stopBtn").style.display = "none";
+          document.getElementById("sendBtn").style.display = "inline-flex";
         }
-        if (!fullText) { bubble.parentElement.remove(); throw new Error("빈 응답"); }
-        return fullText;
+      }
+      function stopStreaming() {
+        if (currentAbortController) {
+          currentAbortController.abort();
+        }
       }
       document.getElementById("chatInput").addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }

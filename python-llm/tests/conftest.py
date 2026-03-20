@@ -1,6 +1,9 @@
 """
-pytest 설정: mock 모드로 테스트 (torch 불필요)
-llm_service.generate를 직접 mock하여 torch import를 완전히 회피
+pytest 공통 픽스처.
+
+- ``LLM_FALLBACK_MOCK=1`` 로 두어 HF 경로 테스트 시 GPU/torch 없이 동작하게 한다.
+- ``sys.modules["llm_service"]`` 를 MagicMock 으로 밀어 넣어 ``app`` import 시
+  ``transformers`` 로딩을 아예 하지 않는다.
 """
 
 import sys

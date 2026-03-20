@@ -1,6 +1,8 @@
 """
-Ollama LLM 서비스
-로컬 Ollama 서버를 통한 LLM 추론
+Ollama HTTP API 클라이언트 — ``/api/generate``, ``/api/chat``, 스트리밍 채팅.
+
+- ``app`` 의 공유 ``httpx.AsyncClient`` 를 넘기면 연결 풀을 재사용한다.
+- 모듈 전역 ``_breaker`` 로 연속 실패 시 빠른 거절(서킷 브레이커).
 """
 
 import json
@@ -11,6 +13,7 @@ import httpx
 from circuit_breaker import CircuitBreaker, ServiceUnavailableError
 from config import get_settings
 
+# Ollama 연결/타임아웃 연속 실패 시 일시적으로 요청을 차단
 _breaker = CircuitBreaker(failure_threshold=5, reset_timeout=30.0)
 
 logger = logging.getLogger(__name__)

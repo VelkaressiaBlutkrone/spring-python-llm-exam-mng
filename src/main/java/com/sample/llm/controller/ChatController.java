@@ -2,8 +2,8 @@ package com.sample.llm.controller;
 
 import com.sample.llm.dto.ChatHistoryResponse;
 import com.sample.llm.dto.LlmRequest;
-import com.sample.llm.repository.ChatHistoryRepository;
 import com.sample.llm.service.ChatService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -26,11 +26,10 @@ import reactor.core.publisher.Flux;
 public class ChatController {
 
 	private final ChatService chatService;
-	private final ChatHistoryRepository chatHistoryRepository;
 
 	@PostMapping("/query")
 	public String handleRuleQuery(
-			@RequestBody LlmRequest request,
+			@Valid @RequestBody LlmRequest request,
 			@RequestHeader(value = "X-Staff-Id", required = true) Long staffId,
 			@RequestHeader(value = "X-Session-Id", required = false) String sessionId) {
 
@@ -51,7 +50,7 @@ public class ChatController {
 
 	@PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<String> handleRuleQueryStream(
-			@RequestBody LlmRequest request,
+			@Valid @RequestBody LlmRequest request,
 			@RequestHeader(value = "X-Staff-Id", required = false) Long staffId) {
 
 		log.debug("Rule Stream 쿼리 수신 - query: {}, staffId: {}", request.getQuery(), staffId);
@@ -65,7 +64,6 @@ public class ChatController {
 
 		log.debug("규칙 Q&A 히스토리 조회 - staffId: {}, page: {}", staffId, pageable.getPageNumber());
 
-		return chatHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(staffId, pageable)
-				.map(ChatHistoryResponse::from);
+		return chatService.getChatHistory(staffId, pageable);
 	}
 }

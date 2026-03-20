@@ -1,7 +1,8 @@
 """
-의료 용어 오타 교정 모듈
-- DB에서 오타 사전 로드 (DB 사용 불가 시 내장 사전 폴백)
-- 주기적 리로드 지원
+질의 문자열의 흔한 의료·병원 용어 오타를 사전 치환.
+
+- 우선순위: MySQL ``typo_dictionary`` (``reload_typo_dict`` / ``/typo/reload``).
+- DB 실패 시 ``_BUILTIN_TYPO_MAP`` 폴백. 긴 키부터 치환해 부분 겹침을 줄인다.
 """
 
 import logging
@@ -143,7 +144,7 @@ async def reload_typo_dict():
 
 
 async def _maybe_reload():
-    """리로드 간격이 지났으면 백그라운드에서 리로드"""
+    """(예약) 주기적 DB 리로드 — 현재는 호출부 없음. API ``/typo/reload`` 로 수동 갱신."""
     global _last_reload
     if time.monotonic() - _last_reload > _RELOAD_INTERVAL:
         await reload_typo_dict()

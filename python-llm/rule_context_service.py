@@ -1,7 +1,8 @@
 """
-병원규칙 RAG 벡터 검색 -> LLM 컨텍스트 주입 서비스
-medical_rules 전용 컬렉션 사용
-하이브리드 검색: ChromaDB 벡터 + MySQL 키워드 병행, 결과 병합
+병원 내부 규칙 RAG — ``infer/rule`` 계열이 시스템 메시지에 붙이는 컨텍스트.
+
+- Chroma ``chroma_rule_collection`` 유사도 검색 + MySQL ``medical_rule`` LIKE/카테고리 검색.
+- 질문에 매핑된 카테고리 키워드가 있으면 해당 분류 위주로 MySQL을 넓게 가져온 뒤 벡터로 보완.
 """
 
 import asyncio

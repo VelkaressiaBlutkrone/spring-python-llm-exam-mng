@@ -1,6 +1,8 @@
 """
-Ollama 임베딩 서비스
-Ollama /api/embed API를 사용하여 텍스트를 벡터로 변환
+텍스트 → 벡터 — Ollama ``/api/embed``.
+
+검색·인덱싱 스크립트와 ``medical_context_service`` / ``rule_context_service`` 가
+동일 임베딩 모델(``ollama_embed_model``)을 쓰도록 여기서 일원화한다.
 """
 
 import hashlib
@@ -13,6 +15,7 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 동일 질의 반복 시 Ollama 왕복 감소 — LRU에 가깝게 오래된 항목부터 제거
 _embedding_cache: OrderedDict[str, list[float]] = OrderedDict()
 MAX_CACHE_SIZE = 500
 
@@ -57,7 +60,7 @@ async def get_embedding(text: str, client: httpx.AsyncClient | None = None) -> l
             embedding = await _call(_client)
 
     if len(_embedding_cache) >= MAX_CACHE_SIZE:
-        _embedding_cache.popitem(last=False)
+        _embedding_cache.popitem(last=False)  # FIFO: 가장 먼저 넣은 키 제거
     _embedding_cache[cache_key] = embedding
     return embedding
 

@@ -1,4 +1,4 @@
-"""의료 용어 오타 교정 모듈 테스트"""
+"""``correct_typos`` 및 내장 사전 불변 조건 테스트."""
 
 import sys
 import os

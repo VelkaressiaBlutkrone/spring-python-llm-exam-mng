@@ -1,4 +1,4 @@
-"""schemas 유효성 검증 테스트"""
+"""``InferRequest`` Pydantic 경계값·기본값 검증."""
 import sys
 import os
 

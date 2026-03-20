@@ -5,10 +5,10 @@ import com.sample.llm.dto.LlmRequest;
 import com.sample.llm.dto.MedicalHistoryResponse;
 import com.sample.llm.dto.MedicalLlmResponse;
 import com.sample.llm.entity.MedicalHistory;
-import com.sample.llm.repository.MedicalHistoryRepository;
 import com.sample.llm.service.DoctorService;
 import com.sample.llm.service.LlmResponseParser;
 import com.sample.llm.service.MedicalService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -33,13 +33,12 @@ import java.util.List;
 public class MedicalController {
 
 	private final MedicalService medicalService;
-	private final MedicalHistoryRepository medicalHistoryRepository;
 	private final DoctorService doctorService;
 	private final LlmResponseParser llmResponseParser;
 
 	@PostMapping("/query")
 	public String handleQuery(
-			@RequestBody LlmRequest request,
+			@Valid @RequestBody LlmRequest request,
 			@RequestHeader(value = "X-User-Id", required = false) Long userId) {
 
 		log.debug("LLM 쿼리 수신 - query: {}, userId: {}", request.getQuery(), userId);
@@ -134,7 +133,6 @@ public class MedicalController {
 
 		log.debug("의학 히스토리 조회 - staffId: {}, page: {}", staffId, pageable.getPageNumber());
 
-		return medicalHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(staffId, pageable)
-				.map(MedicalHistoryResponse::from);
+		return medicalService.getMedicalHistory(staffId, pageable);
 	}
 }

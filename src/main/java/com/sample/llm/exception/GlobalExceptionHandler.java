@@ -50,6 +50,33 @@ public class GlobalExceptionHandler {
 	}
 
 	/**
+	 * 비즈니스 로직 검증 실패 → 400 Bad Request
+	 */
+	@ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+	public ResponseEntity<ErrorResponse> handleBusinessException(RuntimeException e) {
+		log.warn("비즈니스 예외: {}", e.getMessage());
+		return ResponseEntity
+				.badRequest()
+				.body(new ErrorResponse(e.getMessage()));
+	}
+
+	/**
+	 * Bean Validation 실패 → 400 Bad Request
+	 */
+	@ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+	public ResponseEntity<ErrorResponse> handleValidationException(
+			org.springframework.web.bind.MethodArgumentNotValidException e) {
+		String message = e.getBindingResult().getFieldErrors().stream()
+				.map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+				.findFirst()
+				.orElse("입력값 검증 실패");
+		log.warn("Validation 예외: {}", message);
+		return ResponseEntity
+				.badRequest()
+				.body(new ErrorResponse(message));
+	}
+
+	/**
 	 * 기타 예상치 못한 예외 → 500 Internal Server Error
 	 */
 	@ExceptionHandler(Exception.class)

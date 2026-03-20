@@ -13,8 +13,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/reservation")
@@ -24,16 +22,10 @@ public class ReservationApiController {
 	private final ReservationService reservationService;
 
 	@PostMapping
-	public ResponseEntity<?> createReservation(@RequestBody ReservationRequest.Save request) {
-		try {
-			ReservationResponse.Max result = reservationService.createReservation(request);
-			log.info("예약 API 성공 - reservationId: {}", result.getId());
-			return ResponseEntity.ok(result);
-		} catch (IllegalStateException e) {
-			return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-		} catch (IllegalArgumentException e) {
-			return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-		}
+	public ResponseEntity<ReservationResponse.Max> createReservation(@RequestBody ReservationRequest.Save request) {
+		ReservationResponse.Max result = reservationService.createReservation(request);
+		log.info("예약 API 성공 - reservationId: {}", result.getId());
+		return ResponseEntity.ok(result);
 	}
 
 	@GetMapping("/slots/{doctorId}")

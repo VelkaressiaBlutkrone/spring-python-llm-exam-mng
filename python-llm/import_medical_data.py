@@ -1,11 +1,16 @@
 """
-llm_data/*.zip -> MySQL 적재 스크립트
-중첩 ZIP 구조: outer.zip > inner.zip > *.json
+공공·연구용 의학 지식 ZIP → MySQL ``medical_content`` / ``medical_qa`` 적재.
 
-실행:
-    cd python-llm
-    pip install pymysql
-    python import_medical_data.py
+데이터 구조:
+    바깥 ZIP(08·09 데이터셋) → 안쪽 ZIP(``TS_*`` 원천 JSON, ``TL_*``/``VL_*`` Q&A JSON)
+    → JSON 레코드마다 배치 INSERT.
+
+설정:
+    ``MYSQL_*`` 환경 변수(또는 아래 ``DB_CONFIG`` 기본값). ``config.Settings`` 와
+    별도로 동작하므로 운영 DB와 맞추려면 환경 변수를 동일하게 맞출 것.
+
+실행 예:
+    cd python-llm && pip install pymysql && python import_medical_data.py
 """
 
 import json
@@ -219,6 +224,7 @@ def _flush_qa(conn, batch):
 
 
 def main():
+    # 프로젝트 루트의 llm_data/ 아래 고정 파일명 ZIP만 처리
     llm_data_dir = os.path.join(os.path.dirname(__file__), "..", "llm_data")
     llm_data_dir = os.path.abspath(llm_data_dir)
 

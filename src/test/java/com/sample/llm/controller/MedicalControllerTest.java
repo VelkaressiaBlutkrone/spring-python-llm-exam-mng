@@ -2,10 +2,10 @@ package com.sample.llm.controller;
 
 import com.sample.llm.dto.DoctorScheduleDto;
 import com.sample.llm.dto.DoctorWithScheduleDto;
+import com.sample.llm.dto.MedicalHistoryResponse;
 import com.sample.llm.entity.MedicalHistory;
 import com.sample.llm.exception.LlmServiceUnavailableException;
 import com.sample.llm.exception.LlmTimeoutException;
-import com.sample.llm.repository.MedicalHistoryRepository;
 import com.sample.llm.service.DoctorService;
 import com.sample.llm.service.LlmResponseParser;
 import com.sample.llm.service.MedicalService;
@@ -43,9 +43,6 @@ class MedicalControllerTest {
 
 	@MockitoBean
 	private MedicalService medicalService;
-
-	@MockitoBean
-	private MedicalHistoryRepository medicalHistoryRepository;
 
 	@MockitoBean
 	private DoctorService doctorService;
@@ -195,27 +192,18 @@ class MedicalControllerTest {
 	@Test
 	@DisplayName("GET /api/medical/history/{staffId} - 의학 히스토리 페이징 조회")
 	void getHistory_success() throws Exception {
-		MedicalHistory history1 = new MedicalHistory("첫 번째 질문", "COMPLETED");
-		history1.setId(1L);
-		history1.setSessionId("session-001");
-		history1.setAnswer("첫 번째 응답");
-		history1.setMetadata("{\"model\":\"gpt2\",\"latency_ms\":150}");
-		history1.setCreatedAt(LocalDateTime.of(2025, 1, 15, 10, 30, 0));
+		MedicalHistoryResponse resp1 = MedicalHistoryResponse.from(buildHistory(1L, "첫 번째 질문", "첫 번째 응답",
+				LocalDateTime.of(2025, 1, 15, 10, 30, 0)));
+		MedicalHistoryResponse resp2 = MedicalHistoryResponse.from(buildHistory(2L, "두 번째 질문", "두 번째 응답",
+				LocalDateTime.of(2025, 1, 15, 11, 0, 0)));
 
-		MedicalHistory history2 = new MedicalHistory("두 번째 질문", "COMPLETED");
-		history2.setId(2L);
-		history2.setSessionId("session-002");
-		history2.setAnswer("두 번째 응답");
-		history2.setMetadata("{\"model\":\"gpt2\",\"latency_ms\":200}");
-		history2.setCreatedAt(LocalDateTime.of(2025, 1, 15, 11, 0, 0));
-
-		Page<MedicalHistory> page = new PageImpl<>(
-				List.of(history2, history1),
+		Page<MedicalHistoryResponse> page = new PageImpl<>(
+				List.of(resp2, resp1),
 				PageRequest.of(0, 20),
 				2
 		);
 
-		when(medicalHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(eq(1L), any()))
+		when(medicalService.getMedicalHistory(eq(1L), any()))
 				.thenReturn(page);
 
 		mockMvc.perform(get("/api/medical/history/1")
@@ -235,13 +223,13 @@ class MedicalControllerTest {
 	@Test
 	@DisplayName("GET /api/medical/history/{staffId} - 빈 히스토리")
 	void getHistory_empty() throws Exception {
-		Page<MedicalHistory> emptyPage = new PageImpl<>(
+		Page<MedicalHistoryResponse> emptyPage = new PageImpl<>(
 				List.of(),
 				PageRequest.of(0, 20),
 				0
 		);
 
-		when(medicalHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(eq(999L), any()))
+		when(medicalService.getMedicalHistory(eq(999L), any()))
 				.thenReturn(emptyPage);
 
 		mockMvc.perform(get("/api/medical/history/999"))
@@ -249,6 +237,14 @@ class MedicalControllerTest {
 				.andExpect(jsonPath("$.content").isArray())
 				.andExpect(jsonPath("$.content.length()").value(0))
 				.andExpect(jsonPath("$.totalElements").value(0));
+	}
+
+	private MedicalHistory buildHistory(Long id, String question, String answer, LocalDateTime createdAt) {
+		MedicalHistory h = new MedicalHistory(question, "COMPLETED");
+		h.setId(id);
+		h.setAnswer(answer);
+		h.setCreatedAt(createdAt);
+		return h;
 	}
 
 	@Test

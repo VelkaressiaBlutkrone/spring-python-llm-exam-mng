@@ -1,6 +1,7 @@
 package com.sample.llm.service;
 
 import com.sample.llm.dto.LlmResponse;
+import com.sample.llm.dto.MedicalHistoryResponse;
 import com.sample.llm.entity.MedicalHistory;
 import com.sample.llm.exception.LlmServiceUnavailableException;
 import com.sample.llm.exception.LlmTimeoutException;
@@ -9,6 +10,8 @@ import com.sample.llm.repository.StaffRepository;
 import io.netty.channel.ConnectTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -139,5 +142,10 @@ public class MedicalService {
 			log.error("metadata JSON 변환 실패", e);
 			return "{}";
 		}
+	}
+
+	public Page<MedicalHistoryResponse> getMedicalHistory(Long staffId, Pageable pageable) {
+		return medicalHistoryRepository.findByStaff_IdOrderByCreatedAtDesc(staffId, pageable)
+				.map(MedicalHistoryResponse::from);
 	}
 }

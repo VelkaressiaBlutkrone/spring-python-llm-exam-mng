@@ -1,4 +1,4 @@
-"""LLM 응답 후처리 모듈 테스트"""
+"""``response_cleaner`` 특수토큰·CJK 제거·문장 꼬리 정리 동작 검증."""
 
 import sys
 import os

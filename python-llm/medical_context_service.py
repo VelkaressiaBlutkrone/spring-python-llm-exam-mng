@@ -14,6 +14,7 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# asyncio 환경에서 풀 이중 생성 방지
 _pool = None
 _pool_lock = asyncio.Lock()
 

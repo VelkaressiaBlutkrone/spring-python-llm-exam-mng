@@ -1,8 +1,9 @@
 """
-Circuit Breaker 패턴 구현
-Ollama 서버 장애 시 빠른 실패를 통해 사용자 대기 시간을 줄인다.
+서킷 브레이커 — 외부 LLM HTTP 호출 연속 실패 시 짧은 503으로 응답.
 
-상태: CLOSED(정상) → OPEN(차단) → HALF_OPEN(시험)
+상태 흐름: CLOSED →(실패 누적)→ OPEN →(timeout 후 단일 프로브)→ 성공 시 CLOSED.
+
+``ollama_service`` / ``vllm_service`` 가 각각 모듈 전역 인스턴스를 둔다.
 """
 
 import logging
