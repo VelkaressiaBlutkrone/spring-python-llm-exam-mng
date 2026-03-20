@@ -41,6 +41,7 @@ from circuit_breaker import ServiceUnavailableError
 from metrics import metrics
 from config import get_settings
 from medical_context_service import build_medical_context, close_pool, get_pool
+from prompt_guard import sanitize_history, sanitize_query
 from prompt_loader import load_prompt
 from response_cleaner import NON_KOREAN_CJK_PATTERN, SPECIAL_TOKEN_PATTERN, clean_llm_response
 import aiomysql
@@ -330,8 +331,9 @@ async def infer_medical(request: Request, body: InferRequest) -> InferResponse:
 
     settings = get_settings()
 
-    # (0) 오타 교정
+    # (0) 오타 교정 + 인젝션 감지
     corrected_query = correct_typos(body.query)
+    _, is_suspicious = sanitize_query(body.query)
 
     # (1) 의학 컨텍스트 조회
     medical_context = await build_medical_context(corrected_query)
@@ -342,12 +344,9 @@ async def infer_medical(request: Request, body: InferRequest) -> InferResponse:
     if medical_context:
         messages.append({"role": "system", "content": medical_context})
 
-    # 대화 이력 포함 (최근 3턴 = 6 메시지 제한)
-    if body.history:
-        recent_history = body.history[-6:]  # 최근 3턴
-        for msg in recent_history:
-            if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                messages.append({"role": msg["role"], "content": msg["content"]})
+    # 대화 이력 포함 (검증 + 인젝션 방어)
+    for msg in sanitize_history(body.history):
+        messages.append({"role": msg["role"], "content": msg["content"]})
 
     messages.append({"role": "user", "content": corrected_query})
 
@@ -396,12 +395,9 @@ async def infer_medical_stream(request: Request, body: InferRequest):
     if medical_context:
         messages.append({"role": "system", "content": medical_context})
 
-    # 대화 이력 포함 (최근 3턴 = 6 메시지 제한)
-    if body.history:
-        recent_history = body.history[-6:]  # 최근 3턴
-        for msg in recent_history:
-            if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                messages.append({"role": msg["role"], "content": msg["content"]})
+    # 대화 이력 포함 (검증 + 인젝션 방어)
+    for msg in sanitize_history(body.history):
+        messages.append({"role": msg["role"], "content": msg["content"]})
 
     messages.append({"role": "user", "content": corrected_query})
 
@@ -555,11 +551,9 @@ async def infer_rule_stream(request: Request, body: InferRequest):
     messages = [{"role": "system", "content": load_prompt("rule_system")}]
     messages.append({"role": "system", "content": rule_context})
 
-    if body.history:
-        recent_history = body.history[-6:]
-        for msg in recent_history:
-            if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                messages.append({"role": msg["role"], "content": msg["content"]})
+    # 대화 이력 포함 (검증 + 인젝션 방어)
+    for msg in sanitize_history(body.history):
+        messages.append({"role": msg["role"], "content": msg["content"]})
 
     messages.append({"role": "user", "content": corrected_query})
 
