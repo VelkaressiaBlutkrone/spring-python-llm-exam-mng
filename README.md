@@ -23,34 +23,41 @@ Spring Boot + Python + MySQL + Ollama 기반의 의료 상담 LLM 시스템입�
 spring_llm_sample_mng/
 ├── src/main/java/com/sample/llm/
 │   ├── SpringLlmSampleMngApplication.java
+│   ├── _core/utils/
+│   │   └── Resp.java                    # 공통 응답 래퍼 (ok/fail)
 │   ├── config/
 │   │   ├── DataLoader.java              # 초기 시드 데이터 로딩
 │   │   └── WebClientConfig.java         # WebClient Bean 설정
 │   ├── controller/
 │   │   ├── MedicalController.java       # 의료 상담 REST API (/api/medical/**)
-│   │   └── ChatController.java          # 병원 규칙 Q&A REST API (/api/chat/**)
+│   │   ├── ChatController.java          # 병원 규칙 Q&A REST API (/api/chat/**)
+│   │   └── ReservationApiController.java # 예약 REST API (/api/reservations/**)
 │   ├── dto/
 │   │   ├── DoctorDto.java, DoctorScheduleDto.java, DoctorWithScheduleDto.java
 │   │   ├── MedicalLlmResponse.java      # 의료상담 통합 응답 DTO
 │   │   ├── LlmRequest.java, LlmResponse.java
+│   │   ├── ReservationRequest.java, ReservationResponse.java
 │   │   ├── ChatHistoryResponse.java, MedicalHistoryResponse.java
 │   │   └── ErrorResponse.java
 │   ├── entity/
 │   │   ├── Staff.java                   # 직원 (의사/간호사)
 │   │   ├── Doctor.java, DoctorSchedule.java
+│   │   ├── Reservation.java             # 예약
 │   │   ├── MedicalHistory.java          # 의료 상담 이력
 │   │   ├── ChatHistory.java             # 병원 규칙 Q&A 이력
 │   │   ├── MedicalQa.java, MedicalContent.java
-│   │   ├── MedicalDomain.java, MedicalRule.java
+│   │   └── MedicalDomain.java, MedicalRule.java
 │   ├── repository/                      # JPA Repository
 │   │   ├── MedicalHistoryRepository, ChatHistoryRepository
 │   │   ├── DoctorRepository, DoctorScheduleRepository
+│   │   ├── ReservationRepository
 │   │   ├── MedicalQaRepository, MedicalContentRepository
-│   │   ├── MedicalRuleRepository, StaffRepository, MedicalDomainRepository
+│   │   └── MedicalRuleRepository, StaffRepository, MedicalDomainRepository
 │   ├── service/
 │   │   ├── MedicalService.java          # 의료 상담 LLM 호출 + 이력 관리
 │   │   ├── ChatService.java             # 병원 규칙 Q&A LLM 호출 + 이력 저장
 │   │   ├── DoctorService.java           # 의사+스케줄 조회
+│   │   ├── ReservationService.java      # 예약 관리
 │   │   └── LlmResponseParser.java       # LLM 응답 파싱 (진료과 추출)
 │   └── exception/
 │       ├── GlobalExceptionHandler.java
@@ -83,6 +90,7 @@ spring_llm_sample_mng/
 │   ├── response_cleaner.py              # LLM 응답 후처리 (CJK 필터링)
 │   ├── typo_corrector.py                # 의료 용어 오타 교정 (DB + 내장 사전)
 │   ├── llm_service.py                   # Hugging Face 백엔드 (폴백)
+│   ├── vllm_service.py                  # vLLM 백엔드 서비스
 │   ├── prompts/
 │   │   ├── medical_system.txt            # 의료 상담 시스템 프롬프트
 │   │   └── rule_system.txt              # 병원 규칙 시스템 프롬프트
@@ -95,9 +103,7 @@ spring_llm_sample_mng/
 │   ├── pyproject.toml
 │   └── Dockerfile
 ├── llm_data/                            # 데이터 소스
-│   ├── medical_rules.json               # 병원 규칙 (200+건)
-│   ├── 08.전문 의학지식 데이터.zip      # 의학 Q&A/콘텐츠 (별도 확보)
-│   └── 09.필수의료 의학지식 데이터.zip
+│   └── medical_rules.json               # 병원 규칙 (200+건)
 ├── scripts/                             # DB 마이그레이션·초기화
 │   ├── medical-tables.sql               # medical_domain, medical_content, medical_qa, medical_rule
 │   ├── init-mysql.sql                   # DB 초기 설정
@@ -118,14 +124,17 @@ spring_llm_sample_mng/
 │   ├── TASK_MEDICAL_RULE_RAG.md         # 병원 규칙 RAG
 │   ├── TASK_*.md                        # 기능별 작업 문서
 │   ├── ERD_ALIGNMENT.md, ERD_NON_STANDARD_TABLES.md
-│   ├── MVP_FEATURES.md, DAILY_REPORT_TEMPLATE.md
+│   ├── MVP_FEATURES.md
+│   ├── CODE_REVIEW_PYTHON_LLM.md, CODE_REVIEW_SPRING_2025-03-19.md
+│   ├── PROJECT_IMPROVEMENT_REPORT.md
+│   ├── VLLM-QWEN2.5-7B-WSL2-GUIDE.md
 ├── .claude/                             # Claude 스킬 규칙
 │   ├── rules/common-rule.md
 │   └── skills/
 ├── docker-compose.yml                   # MySQL + ChromaDB (+ python-llm, spring-app)
 ├── Dockerfile                           # Spring Boot Docker 이미지
 ├── build.gradle
-├── .env.example, .env
+├── .env.example
 └── .gitignore
 ```
 
@@ -237,7 +246,7 @@ Spring Boot가 포트 `8080`에서 실행됩니다.
 
 | 변수                        | 기본값                   | 설명                                  |
 | --------------------------- | ------------------------ | ------------------------------------- |
-| `LLM_BACKEND`               | `huggingface`            | LLM 백엔드 (`huggingface` / `ollama`) |
+| `LLM_BACKEND`               | `huggingface`            | LLM 백엔드 (`huggingface` / `ollama` / `vllm`) |
 | `OLLAMA_BASE_URL`           | `http://localhost:11434` | Ollama 서버 URL                       |
 | `OLLAMA_MODEL`              | `qwen2.5:7b`             | Ollama 추론 모델명                    |
 | `OLLAMA_EMBED_MODEL`        | `nomic-embed-text`       | Ollama 임베딩 모델명                  |
@@ -455,7 +464,9 @@ python -m pytest tests/ -v --cov
 [Spring Boot :8080]
     ├── MedicalController (/api/medical/** — 의료상담/스트리밍)
     ├── ChatController (/api/chat/** — 병원규칙 Q&A)
+    ├── ReservationApiController (/api/reservations/** — 예약)
     ├── MedicalService / ChatService (LLM 호출 + 이력)
+    ├── ReservationService (예약 관리)
     ├── DoctorService (의사+스케줄 조회)
     └── LlmResponseParser (진료과 추출)
     ↓ WebClient
@@ -483,6 +494,7 @@ python -m pytest tests/ -v --cov
 [MySQL :3307]
     ├── medical_qa / medical_content → 의학 지식 데이터
     ├── doctors / doctor_schedules   → 의사 + 진료 스케줄
+    ├── reservations                 → 예약 정보
     ├── medical_history              → 의료 상담 이력
     ├── chatbot_history              → 병원 규칙 Q&A 이력
     ├── medical_rules                → 병원 규칙 데이터
@@ -530,4 +542,16 @@ python -m pytest tests/ -v --cov
 - [Spring Boot 개발 규칙](doc/RULE_SPRING.md)
 - [Python 개발 규칙](doc/RULE_PYTHON.md)
 - [Ollama 설치/연동 가이드](doc/SETUP_OLLAMA.md)
+- [vLLM + Qwen2.5-7B WSL2 가이드](doc/VLLM-QWEN2.5-7B-WSL2-GUIDE.md)
+- [Spring 코드 리뷰](doc/CODE_REVIEW_SPRING_2025-03-19.md)
+- [Python LLM 코드 리뷰](doc/CODE_REVIEW_PYTHON_LLM.md)
+- [프로젝트 개선 보고서](doc/PROJECT_IMPROVEMENT_REPORT.md)
+- [MVP 기능 목록](doc/MVP_FEATURES.md)
+- [ERD 정렬](doc/ERD_ALIGNMENT.md)
+- [ERD 비표준 테이블](doc/ERD_NON_STANDARD_TABLES.md)
+- [컨트롤러 분리 작업](doc/TASK_CONTROLLER_SEPARATION.md)
+- [의사 스케줄 작업](doc/TASK_DOCTOR_SCHEDULE.md)
+- [HMS 병합 작업](doc/TASK_HMS_MERGE.md)
+- [Ollama 모델 작업](doc/TASK_LAMA.md)
+- [vLLM 마이그레이션 작업](doc/TASK_VLLM_MIGRATION.md)
 - [Python LLM 모듈 README](python-llm/README.md)

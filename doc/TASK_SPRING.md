@@ -1,6 +1,8 @@
 # Spring Boot 백엔드 작업 목록
 
 > 참조: [PRD.md](./PRD.md), [RULE_SPRING.md](./RULE_SPRING.md)
+>
+> **Note**: 이 문서는 초기 설계 시점의 작업 목록입니다. 이후 컨트롤러 분리가 완료되어 `LlmController` → `MedicalController` + `ChatController`, `LlmService` → `MedicalService` + `ChatService`로 변경되었습니다. 분리 내용은 [TASK_CONTROLLER_SEPARATION.md](./TASK_CONTROLLER_SEPARATION.md)를 참조하세요.
 
 Spring Boot 백엔드는 REST API를 제공하고, MySQL에 데이터를 저장하며, Python LLM 서버를 HTTP로 호출합니다.
 

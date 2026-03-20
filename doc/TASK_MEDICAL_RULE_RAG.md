@@ -27,7 +27,7 @@
 - ChromaDB는 Python LLM 서버 venv에 이미 설치됨
 - 기존 `/infer/rule` Python 엔드포인트를 수정하여 벡터 검색 컨텍스트 주입
 - Spring Boot 측 `ChatController` / `ChatService`는 API 호출만 하므로 변경 최소화
-- 프로젝트 코드 컨벤션(`.ai/rules/common-rule.md`) 준수
+- 프로젝트 코드 컨벤션(`.claude/rules/common-rule.md`) 준수
 
 ## 엣지 케이스 & 에러 시나리오
 

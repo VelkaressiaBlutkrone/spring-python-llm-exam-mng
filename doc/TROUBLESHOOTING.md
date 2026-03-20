@@ -152,8 +152,8 @@
 | 파일                      | 변경                                                  |
 | ------------------------- | ----------------------------------------------------- |
 | `MedicalLlmResponse.java` | `List<DoctorDto>` → `List<DoctorWithScheduleDto>`     |
-| `LlmController.java`      | `findDoctors()` → `findDoctorsWithSchedule()`         |
-| `LlmControllerTest.java`  | Mock 객체를 `DoctorWithScheduleDto`로 변경            |
+| `MedicalController.java`   | `findDoctors()` → `findDoctorsWithSchedule()`         |
+| `MedicalIntegrationTest.java` | Mock 객체를 `DoctorWithScheduleDto`로 변경         |
 | `index.html`              | `formatSchedules()` 함수 추가, 테이블에 스케줄 렌더링 |
 
 ### 교훈
@@ -382,7 +382,7 @@ if (firstToken) {
 
 ### 증상
 
-- `LlmControllerTest.java` 컴파일 오류:
+- `MedicalIntegrationTest.java` 컴파일 오류:
   ```
   incompatible types: String cannot be converted to LocalTime
   ```

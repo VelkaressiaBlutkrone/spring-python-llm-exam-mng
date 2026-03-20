@@ -232,7 +232,7 @@ HMS는 Mustache SSR이므로, 장기적으로는 2번을 권장. 단기에는 1�
 
 - **위치**: 프로젝트 루트 `python-llm/` 유지
 - **변경**: 없음 (Spring만 HMS 구조로 맞춤)
-- **실행**: `docker-compose` 또는 `python-llm/run.bat` 등 기존 방식 유지
+- **실행**: `docker-compose` 또는 `python-llm/run.sh` 등 기존 방식 유지
 - **연동**: Spring `llm.service.url`로 Python 서버 URL 지정
 
 ---
